@@ -13,12 +13,12 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   :root{
-    --bg:#0b0f1a; --bg2:#121826; --card:#141b2b; --card2:#1a2234; --border:#2a3348;
-    --text:#e8edf6; --muted:#8b95ab; --accent:#7c5cff; --accent2:#00c9ff;
+    --bg:#0e0e10; --bg2:#19191c; --card:#151518; --card2:#1f1f23; --border:#2c2c31;
+    --text:#e9e9ee; --muted:#9a9aa3; --accent:#ff7a18; --accent2:#ff9d3b;
     --good:#3fb950; --warn:#d29922; --bad:#f85149;
     --grad:linear-gradient(135deg,var(--accent),var(--accent2));
   }
-  html{scrollbar-color:#2a3348 transparent}
+  html{scrollbar-color:#2c2c31 transparent}
   body{
     font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
     background-color:var(--bg);
@@ -29,13 +29,13 @@
       radial-gradient(1px 1px at 66% 78%,rgba(255,255,255,.2),transparent),
       radial-gradient(1.5px 1.5px at 82% 38%,rgba(255,255,255,.24),transparent),
       radial-gradient(1px 1px at 92% 86%,rgba(255,255,255,.18),transparent),
-      radial-gradient(900px 500px at 85% -10%,rgba(124,92,255,.10),transparent),
-      radial-gradient(800px 500px at -10% 110%,rgba(0,201,255,.08),transparent),
-      linear-gradient(180deg,#0b0f1a 0%,#0d1117 100%);
+      radial-gradient(900px 500px at 85% -10%,rgba(255,122,24,.09),transparent),
+      radial-gradient(800px 500px at -10% 110%,rgba(255,157,59,.07),transparent),
+      linear-gradient(180deg,#0e0e10 0%,#111114 100%);
     background-attachment:fixed;
     color:var(--text); min-height:100vh; line-height:1.45;
   }
-  .topbar{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);background:rgba(11,15,26,.75);border-bottom:1px solid var(--border)}
+  .topbar{position:sticky;top:0;z-index:20;backdrop-filter:blur(12px);background:rgba(16,16,18,.8);border-bottom:1px solid var(--border)}
   .topbar-in{max-width:980px;margin:0 auto;padding:12px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:14px}
   .brand{font-size:20px;font-weight:800;letter-spacing:.3px;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap}
   nav{display:flex;gap:6px;flex-wrap:wrap}
@@ -44,7 +44,7 @@
     background:transparent;padding:7px 14px;border-radius:10px;transition:.15s;
   }
   nav button:hover{color:var(--text);background:var(--card2)}
-  nav button.active{color:#fff;background:var(--grad);box-shadow:0 4px 14px rgba(124,92,255,.35)}
+  nav button.active{color:#fff;background:var(--grad);box-shadow:0 4px 14px rgba(255,122,24,.35)}
   main{max-width:980px;margin:0 auto;padding:22px 20px 80px}
   .tab{display:none;animation:fade .18s ease}
   .tab.active{display:block}
@@ -66,7 +66,7 @@
   input[type=text]:focus,input[type=time]:focus,textarea:focus{border-color:var(--accent)}
   button.btn{
     font:inherit;font-weight:700;font-size:14px;color:#fff;background:var(--grad);border:none;cursor:pointer;
-    padding:9px 16px;border-radius:10px;box-shadow:0 4px 14px rgba(124,92,255,.3);transition:filter .15s,transform .05s;
+    padding:9px 16px;border-radius:10px;box-shadow:0 4px 14px rgba(255,122,24,.3);transition:filter .15s,transform .05s;
   }
   button.btn:hover{filter:brightness(1.12)}
   button.btn:active{transform:translateY(1px)}
@@ -98,7 +98,7 @@
   }
   .habit-strip button .dow{position:absolute;font-size:9px;top:3px;left:0;right:0;opacity:.8}
   .habit-strip button .dn{position:absolute;bottom:3px;left:0;right:0;font-weight:700}
-  .habit-strip button.on{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 3px 10px rgba(124,92,255,.35)}
+  .habit-strip button.on{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 3px 10px rgba(255,122,24,.35)}
   .habit-strip button.today:not(.on){border-color:var(--accent)}
   .habit-strip button:hover{transform:scale(1.06)}
   .habit-name{flex:1;font-size:15px;font-weight:600}
@@ -807,7 +807,7 @@ function renderHabits() {
   const pcts = days.map((_, i) => totals[i] ? Math.round(dones[i] / totals[i] * 100) : 0);
   let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Выполнение привычек за неделю">
     <defs>
-      <linearGradient id="grA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#00c9ff"/></linearGradient>
+      <linearGradient id="grA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7a18"/><stop offset="1" stop-color="#ff9d3b"/></linearGradient>
       <linearGradient id="grB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2ea043"/><stop offset="1" stop-color="#56d364"/></linearGradient>
     </defs>`;
   days.forEach((d, i) => {
