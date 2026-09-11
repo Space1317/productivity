@@ -132,6 +132,9 @@
   .add-event{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px}
   .add-event .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
   .add-event .row input[type=time]{width:110px}
+  .add-event select{font:inherit;color:var(--text);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;outline:none;cursor:pointer;max-width:110px}
+  .add-event select:focus{border-color:var(--accent)}
+  .add-event select:disabled{opacity:.4;cursor:not-allowed}
   .add-event label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
   .add-event input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent)}
   .upcoming{color:var(--muted);font-size:13px;margin-top:4px}
@@ -265,7 +268,6 @@
       <div id="calWarn"></div>
       <div class="cal-grid" id="calGrid"></div>
       <div id="dayPanel"></div>
-      <div id="upcomingWrap"></div>
     </div>
   </section>
 
@@ -653,8 +655,13 @@ async function gcalAddEvent() {
     body.start = { dateTime: date + 'T' + from + ':00', timeZone: tz };
     body.end = { dateTime: date + 'T' + (to || from) + ':00', timeZone: tz };
   }
+  // гости: e-mail через запятую / пробел / точку с запятой
+  const guests = ($('evGuests') ? $('evGuests').value : '').split(/[,\s;]+/).map(s => s.trim()).filter(Boolean);
+  if (guests.length) body.attendees = guests.map(email => ({ email }));
   try {
-    await gcalApi('/calendars/primary/events', { method: 'POST', body });
+    await gcalApi('/calendars/primary/events?sendUpdates=all', { method: 'POST', body });
+    if ($('evTitle')) $('evTitle').value = '';
+    if ($('evGuests')) $('evGuests').value = '';
     const { y, m } = state.calMonth;
     delete monthCache[calKey(y, m)];
     await ensureEvents(y, m, true);
@@ -860,12 +867,6 @@ function renderGcalSetup() {
       запустите локальный сервер: <code>python -m http.server 8000</code> в папке проекта и откройте
       <code>http://localhost:8000</code>.</div>`;
   }
-  if (location.protocol === 'http:' || location.protocol === 'https:') {
-    html += `<div class="notice">Текущий origin этой страницы: <code>${esc(location.origin)}</code> —
-      именно его добавьте в «Authorized JavaScript origins» вашего OAuth-клиента в
-      <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
-      иначе Google блокирует вход ошибкой «origin_mismatch».</div>`;
-  }
   if (gcalError) {
     html += `<div class="notice">⚠ ${esc(gcalError)}</div>`;
     const apiMatch = gcalError.match(/Google Calendar API has not been used|is disabled|not been used in project/);
@@ -958,7 +959,38 @@ function renderCalendar() {
   }
 
   renderDayPanel();
-  renderUpcoming();
+}
+
+function setCalDay(key) {
+  state.calDay = key;
+  const [yy, mm] = key.split('-').map(Number);
+  const want = { y: yy, m: mm - 1 };
+  const cur = state.calMonth;
+  const monthChanged = cur.y !== want.y || cur.m !== want.m;
+  state.calMonth = want;
+  saveState();
+  renderCalendar();
+  if (monthChanged && state.gcal.clientId && state.gcal.token) {
+    ensureEvents(want.y, want.m);
+  }
+}
+
+function shiftDay(dir) {
+  const d = new Date(state.calDay + 'T00:00:00');
+  d.setDate(d.getDate() + dir);
+  setCalDay(fmtDay(d));
+}
+
+// Выпадающий список времени с интервалом 15 минут (как в Google Calendar)
+function timeOpts(selIdx) {
+  const step = 15;
+  let out = '';
+  for (let m = 0, i = 0; m < 1440; m += step, i++) {
+    const hh = pad(Math.floor(m / 60));
+    const mm = pad(m % 60);
+    out += `<option value="${hh}:${mm}"${i === selIdx ? ' selected' : ''}>${hh}:${mm}</option>`;
+  }
+  return out;
 }
 
 function renderDayPanel() {
@@ -969,8 +1001,19 @@ function renderDayPanel() {
   const label = DOW_FULL[new Date(y, m - 1, d).getDay()];
   const title = label.charAt(0).toUpperCase() + label.slice(1) + ', ' + d + ' ' + MONTH_GEN[m - 1];
 
+  const now = new Date();
+  const startTotal = Math.ceil((now.getHours() * 60 + now.getMinutes()) / 15) * 15;
+  const startIdx = (startTotal / 15) % 96;
+  const endIdx = ((startTotal + 60) % 1440) / 15;
+
   let html = `<div class="card" style="background:var(--bg2)">
-    <h3>${title} <span class="tag">${evs.length ? evs.length + ' событ.' : 'свободный день'}</span></h3>`;
+    <div class="cal-nav" style="margin-bottom:4px">
+      <button data-act="calDayPrev" title="Предыдущий день">‹</button>
+      <button data-act="calDayNext" title="Следующий день">›</button>
+      <button data-act="calDayToday">Сегодня</button>
+      <h4 style="margin:0;flex:1">${title}</h4>
+      <span class="tag">${evs.length ? evs.length + ' событ.' : 'свободный день'}</span>
+    </div>`;
   if (evs.length) {
     html += evs.map(e => `
       <div class="ev">
@@ -988,35 +1031,20 @@ function renderDayPanel() {
       </div>
       <div class="row">
         <input type="date" id="evDate" value="${key}" style="width:150px">
-        <input type="time" id="evFrom" title="Начало">
+        <span class="muted">Начало</span>
+        <select id="evFrom">${timeOpts(startIdx)}</select>
         <span class="muted">–</span>
-        <input type="time" id="evTo" title="Конец">
-        <label><input type="checkbox" id="evAllDay"> Весь день</label>
+        <span class="muted">Конец</span>
+        <select id="evTo">${timeOpts(endIdx)}</select>
+        <label style="display:inline-flex"><input type="checkbox" id="evAllDay" data-act="evAllDay"> Весь день</label>
+      </div>
+      <div class="row">
+        <input type="text" id="evGuests" placeholder="Пригласить гостей (e-mail через запятую)" autocomplete="off" style="flex:1">
       </div>
       <button class="btn" data-act="addEvent">Добавить в календарь</button>
     </div>
   </div>`;
   $('dayPanel').innerHTML = html;
-}
-
-function renderUpcoming() {
-  const wrap = $('upcomingWrap');
-  if (!state.gcal.clientId || !state.gcal.token) { wrap.innerHTML = ''; return; }
-  const map = eventsByDay();
-  const tKey = todayKey();
-  const items = [];
-  for (const k in map) {
-    if (k >= tKey) map[k].forEach(e => items.push({ k, ...e }));
-  }
-  items.sort((a, b) => a.startMs - b.startMs);
-  const next = items.slice(0, 8);
-  wrap.innerHTML = `<h3 style="font-size:15px;font-weight:700;margin-bottom:8px">Ближайшие события</h3>` +
-    (next.length
-      ? `<ul class="list upcoming">${next.map(e => {
-          const [yy, mm, dd] = e.k.split('-').map(Number);
-          return `<li><b>${pad(dd)}.${pad(mm)}</b>&nbsp; ${esc(e.time)} — ${esc(e.summary)}</li>`;
-        }).join('')}</ul>`
-      : '<p class="muted" style="font-size:13px">Ближайших событий нет.</p>');
 }
 
 /* ================= вкладки ================= */
@@ -1064,8 +1092,11 @@ document.addEventListener('click', e => {
     case 'gcalChangeId': state.gcal.clientId = ''; state.gcal.token = null; state.gcal.connected = false; saveState(); renderGcalSetup(); break;
     case 'calPrev': { const c = state.calMonth; state.calMonth = { y: c.m === 0 ? c.y - 1 : c.y, m: c.m === 0 ? 11 : c.m - 1 }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
     case 'calNext': { const c = state.calMonth; state.calMonth = { y: c.m === 11 ? c.y + 1 : c.y, m: c.m === 11 ? 0 : c.m + 1 }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
-    case 'calToday': { const now = new Date(); state.calMonth = { y: now.getFullYear(), m: now.getMonth() }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
-    case 'calDay': state.calDay = t.dataset.day; saveState(); renderCalendar(); break;
+    case 'calToday': { const now2 = new Date(); state.calMonth = { y: now2.getFullYear(), m: now2.getMonth() }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
+    case 'calDay': setCalDay(t.dataset.day); break;
+    case 'calDayPrev': shiftDay(-1); break;
+    case 'calDayNext': shiftDay(1); break;
+    case 'calDayToday': setCalDay(todayKey()); break;
     case 'exportData': exportData(); break;
     case 'importData': $('importFile').click(); break;
     case 'resetData': resetData(); break;
@@ -1079,6 +1110,10 @@ document.addEventListener('change', e => {
   if (act === 'toggleTask') toggleTask(t.dataset.id);
   else if (act === 'toggleHabit') toggleHabit(t.dataset.id, t.dataset.day);
   else if (act === 'lockToggle') { state.lockEnabled = t.checked; saveState(); renderToday(); renderTasks(); }
+  else if (act === 'evAllDay') {
+    const f = $('evFrom'), to = $('evTo');
+    if (f && to) { f.disabled = t.checked; to.disabled = t.checked; }
+  }
 });
 
 document.addEventListener('keydown', e => {
