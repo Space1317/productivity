@@ -822,6 +822,12 @@ function renderGcalSetup() {
       запустите локальный сервер: <code>python -m http.server 8000</code> в папке проекта и откройте
       <code>http://localhost:8000</code>.</div>`;
   }
+  if (location.protocol === 'http:' || location.protocol === 'https:') {
+    html += `<div class="notice">Текущий origin этой страницы: <code>${esc(location.origin)}</code> —
+      именно его добавьте в «Authorized JavaScript origins» вашего OAuth-клиента в
+      <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
+      иначе Google блокирует вход ошибкой «origin_mismatch».</div>`;
+  }
   if (gcalError) {
     html += `<div class="notice">⚠ ${esc(gcalError)}</div>`;
   }
@@ -838,7 +844,7 @@ function renderGcalSetup() {
           <li>Откройте <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">console.cloud.google.com/apis/credentials</a> и создайте проект.</li>
           <li>Включите API: «Google Calendar API» (Enabled APIs).</li>
           <li>Создайте <b>OAuth Client ID</b> типа <b>Web application</b>.</li>
-          <li>В «Authorized JavaScript origins» добавьте адрес, с которого открываете страницу: <code>http://localhost:8000</code> (или http://127.0.0.1:8000).</li>
+          <li>В «Authorized JavaScript origins» добавьте адрес, с которого открываете страницу: <code>https://space1317.github.io</code> (или <code>http://localhost:8000</code> при локальной отладке).</li>
           <li>Скопируйте Client ID (вида <code>xxxx.apps.googleusercontent.com</code>) в поле выше.</li>
         </ol>
       </details>`;
