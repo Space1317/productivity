@@ -168,10 +168,6 @@
   .note textarea:focus{border:none;background:transparent}
   .note .meta{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:12px;color:var(--muted)}
   .note .meta .time{flex:1}
-  /* footer */
-  footer{max-width:980px;margin:0 auto;padding:0 20px 30px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;color:var(--muted);font-size:12px}
-  footer button{font:inherit;color:var(--muted);background:var(--card2);border:1px solid var(--border);cursor:pointer;padding:5px 12px;border-radius:8px}
-  footer button:hover{color:var(--text)}
   .muted{color:var(--muted)}
   details.howto{margin-top:10px;font-size:13px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
   details.howto summary{cursor:pointer;font-weight:600;color:var(--text)}
@@ -315,13 +311,6 @@
     <div id="evModalBody"></div>
   </div>
 </div>
-
-<footer>
-  <button data-act="exportData">Экспорт JSON</button>
-  <button data-act="importData">Импорт JSON</button>
-  <button data-act="resetData" style="color:var(--bad)">Сбросить всё</button>
-  <input type="file" id="importFile" accept="application/json" style="display:none">
-</footer>
 
 <script>
 'use strict';
@@ -1256,9 +1245,6 @@ document.addEventListener('click', e => {
     case 'calDayToday': setCalDay(todayKey()); break;
     case 'openEvent': openEventModal(t.dataset.id); break;
     case 'evClose': closeEvModal(); break;
-    case 'exportData': exportData(); break;
-    case 'importData': $('importFile').click(); break;
-    case 'resetData': resetData(); break;
   }
 });
 
@@ -1292,38 +1278,6 @@ document.addEventListener('input', e => {
 
 $('evModal').addEventListener('click', e => {
   if (e.target.id === 'evModal') closeEvModal();
-});
-
-/* ================= экспорт / импорт / сброс ================= */
-function exportData() {
-  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'planer-backup-' + todayKey() + '.json';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-function resetData() {
-  if (!confirm('Удалить все данные планера? Google-события не пострадают, удалятся только локальные настройки и задачи.')) return;
-  localStorage.removeItem(LS_KEY);
-  location.reload();
-}
-$('importFile').addEventListener('change', e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const s = JSON.parse(reader.result);
-      if (!s || typeof s !== 'object' || !Array.isArray(s.habits) || !Array.isArray(s.tasks) || !Array.isArray(s.notes)) {
-        alert('Некорректный файл импорта.'); return;
-      }
-      state = s; saveState(); renderAll();
-      alert('Импорт выполнен.');
-    } catch (err) { alert('Не удалось прочитать файл: ' + err.message); }
-  };
-  reader.readAsText(file);
-  e.target.value = '';
 });
 
 /* ================= helpers привычек ================= */
