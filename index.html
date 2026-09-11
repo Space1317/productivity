@@ -440,50 +440,80 @@ var gcalError = null;
 
 function calKey(y, m) { return y + '-' + m; }
 
-function gcalRequestToken(silent) {
-  return new Promise((resolve, reject) => {
-    if (!window.google || !google.accounts) {
-      reject(new Error('Библиотеки Google не загрузились. Откройте страницу по http://localhost и проверьте интернет.'));
-      return;
-    }
-    if (!window.gTokenClient) {
-      window.gTokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: state.gcal.clientId,
-        scope: 'https://www.googleapis.com/auth/calendar.events',
-        callback() {}
-      });
-    }
-    window.gTokenClient.callback = resp => {
-      if (resp && resp.error) {
-        reject(new Error(resp.error + (resp.error_description ? ': ' + resp.error_description : '')));
-        return;
-      }
-      if (resp) {
-        state.gcal.token = resp.access_token;
-        state.gcal.tokenExpiry = Date.now() + (resp.expires_in || 3600) * 1000;
-        state.gcal.connected = true;
-        saveState();
-      }
-      resolve(resp.access_token);
-    };
-    try { window.gTokenClient.requestAccessToken({ prompt: silent ? '' : undefined }); }
-    catch (err) { reject(err); }
+function gisReady() {
+  return new Promise(resolve => {
+    if (window.google && window.google.accounts) { resolve(); return; }
+    let tries = 0;
+    const iv = setInterval(() => {
+      tries++;
+      if (window.google && window.google.accounts) { clearInterval(iv); resolve(); }
+      else if (tries > 60) { clearInterval(iv); resolve(); }
+    }, 100);
   });
 }
 
-async function gcalGetToken(consent) {
+var gTokenClient = null;
+
+function gcalRequestToken(silent) {
+  // silent === true  -> requestAccessToken({prompt:''})  — без окон
+  // silent === false -> обычный запрос (окно выбора аккаунта/согласия)
+  return new Promise((resolve, reject) => {
+    gisReady().then(() => {
+      if (!window.google || !google.accounts) {
+        reject(new Error('Библиотеки Google не загрузились. Проверьте интернет и перезагрузите страницу.'));
+        return;
+      }
+      if (!gTokenClient) {
+        gTokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: state.gcal.clientId,
+          scope: 'https://www.googleapis.com/auth/calendar.events',
+          callback() {}
+        });
+      }
+      gTokenClient.callback = resp => {
+        if (resp && resp.error) {
+          reject(new Error(resp.error + (resp.error_description ? ': ' + resp.error_description : '')));
+          return;
+        }
+        if (resp) {
+          state.gcal.token = resp.access_token;
+          state.gcal.tokenExpiry = Date.now() + (resp.expires_in || 3600) * 1000;
+          state.gcal.connected = true;
+          saveState();
+        }
+        resolve(resp.access_token);
+      };
+      try { gTokenClient.requestAccessToken({ prompt: silent ? '' : undefined }); }
+      catch (err) { reject(err); }
+    });
+  });
+}
+
+// Автоматическое получение токена: всегда тихо (без окон). Используется фоновыми запросами.
+async function gcalGetToken() {
   const t = state.gcal.token;
   if (t && state.gcal.tokenExpiry && Date.now() < state.gcal.tokenExpiry - 60000) return t;
-  try { return await gcalRequestToken(false); }
+  try { return await gcalRequestToken(true); }
   catch (e) {
-    if (consent) return await gcalRequestToken(true);
-    throw e;
+    throw new Error('Авторизация истекла. Нажмите «Переподключить» на вкладке «Календарь»: ' + e.message);
   }
+}
+
+// Упреждающее тихое обновление токена за 2 минуты до истечения — чтобы окна не появлялись
+var refreshTimer = null;
+function scheduleSilentRefresh() {
+  if (refreshTimer) clearTimeout(refreshTimer);
+  if (!state.gcal.token || !state.gcal.tokenExpiry) return;
+  const delay = Math.max(state.gcal.tokenExpiry - Date.now() - 120000, 5000);
+  refreshTimer = setTimeout(async () => {
+    try { await gcalGetToken(); scheduleSilentRefresh(); }
+    catch (e) { refreshTimer = setTimeout(() => scheduleSilentRefresh(), 180000); }
+  }, delay);
 }
 
 async function gcalApi(path, opts) {
   opts = opts || {};
-  let tok = opts.token || await gcalGetToken(false);
+  let tok = opts.token || await gcalGetToken();
   const doFetch = token => fetch('https://www.googleapis.com/calendar/v3' + path, {
     method: opts.method || 'GET',
     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -491,8 +521,8 @@ async function gcalApi(path, opts) {
   });
   let res = await doFetch(tok);
   if (res.status === 401 || res.status === 403) {
-    // одна попытка тихого обновления токена
-    try { tok = await gcalRequestToken(false); res = await doFetch(tok); }
+    // одна попытка ТИХОГО обновления токена (без окон)
+    try { tok = await gcalGetToken(); res = await doFetch(tok); }
     catch (e) { /* не вышло — отдадим старый ответ */ }
   }
   const text = await res.text();
@@ -518,7 +548,7 @@ async function ensureEvents(y, m, force) {
   if (!force && monthCache[key]) return true;
   if (!state.gcal.clientId || !state.gcal.token) return false;
   try {
-    const tok = await gcalGetToken(false);
+    const tok = await gcalGetToken();
     const data = await gcalApi(monthParam(y, m), { token: tok });
     monthCache[key] = { list: (data && data.items) || [] };
     gcalError = null;
@@ -568,9 +598,16 @@ function eventsByDay() {
 async function gcalConnect() {
   if (!state.gcal.clientId) { renderGcalSetup(); return; }
   try {
-    await gcalGetToken(true);
+    await gisReady();
+    const t = state.gcal.token;
+    const valid = t && state.gcal.tokenExpiry && Date.now() < state.gcal.tokenExpiry - 60000;
+    if (!valid) {
+      try { await gcalRequestToken(true); }       // сначала тихо — если согласие уже есть
+      catch (e) { await gcalRequestToken(false); } // иначе покажем окно Google один раз
+    }
     monthCache = {};
     renderGcalSetup();
+    scheduleSilentRefresh();
     await refreshAllGcal();
   } catch (err) {
     gcalError = 'Ошибка подключения: ' + err.message;
@@ -579,6 +616,7 @@ async function gcalConnect() {
 }
 
 function gcalDisconnect() {
+  if (refreshTimer) { clearTimeout(refreshTimer); refreshTimer = null; }
   try {
     if (state.gcal.token && window.google && google.accounts) {
       google.accounts.oauth2.revoke(state.gcal.token, () => {});
@@ -851,13 +889,15 @@ function renderGcalSetup() {
   } else if (!state.gcal.token) {
     html += `
       <h3 style="margin-bottom:10px">Шаг 2. Вход в Google</h3>
-      <p class="muted" style="margin-bottom:12px">Client ID сохранён. Нажмите кнопку — Google спросит разрешение на доступ к вашему календарю.</p>
+      <p class="muted" style="margin-bottom:12px">Client ID сохранён. Нажмите кнопку — Google спросит разрешение на доступ к календарю.<br>
+      <b>Вход понадобится только один раз</b>: дальше доступ обновляется автоматически, без повторных окон (пока вы залогинены в Google в этом браузере).</p>
       <button class="btn" data-act="gcalConnect">Подключить Google Календарь</button>
       <button class="btn btn-ghost" data-act="gcalChangeId" style="margin-left:8px">✎ Сменить Client ID</button>`;
   } else {
     html += `
       <h3 style="margin-bottom:10px">✓ Google Календарь подключён</h3>
-      <p class="muted" style="margin-bottom:12px">События читаются и добавляются в ваш личный календарь.</p>
+      <p class="muted" style="margin-bottom:12px">События читаются и добавляются в ваш личный календарь.<br>
+      Доступ обновляется автоматически — окна входа больше появляться не будут. «Переподключить» нужно только если Google сессия прервалась.</p>
       <button class="btn" data-act="gcalRefresh">Обновить</button>
       <button class="btn btn-ghost" data-act="gcalConnect" style="margin-left:8px">Переподключить</button>
       <button class="btn btn-ghost" data-act="gcalDisconnect" style="margin-left:8px">Отключить</button>`;
@@ -1089,6 +1129,7 @@ showTab('today');
 const now = new Date();
 if (state.gcal.clientId && state.gcal.token) {
   ensureEvents(now.getFullYear(), now.getMonth());
+  scheduleSilentRefresh();
 }
 </script>
 </body>
