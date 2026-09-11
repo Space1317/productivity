@@ -132,9 +132,12 @@
   .add-event{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:14px}
   .add-event .row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
   .add-event .row input[type=time]{width:110px}
-  .add-event select{font:inherit;color:var(--text);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;outline:none;cursor:pointer;max-width:110px}
-  .add-event select:focus{border-color:var(--accent)}
-  .add-event select:disabled{opacity:.4;cursor:not-allowed}
+  .add-event select,.add-event input[type=date]{font:inherit;color:var(--text);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:8px 10px;outline:none;cursor:pointer}
+  .add-event select{max-width:120px}
+  .add-event input[type=date]{max-width:150px}
+  .add-event select:focus,.add-event input[type=date]:focus{border-color:var(--accent)}
+  .add-event select:disabled,.add-event input[type=date]:disabled{opacity:.4;cursor:not-allowed}
+  .add-event input[type=date]::-webkit-calendar-picker-indicator{cursor:pointer;opacity:.75}
   .add-event label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
   .add-event input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent)}
   .upcoming{color:var(--muted);font-size:13px;margin-top:4px}
@@ -1030,7 +1033,7 @@ function renderDayPanel() {
         <input type="text" id="evTitle" placeholder="Название события…" autocomplete="off" style="flex:1">
       </div>
       <div class="row">
-        <input type="date" id="evDate" value="${key}" style="width:150px">
+        <input type="date" id="evDate" value="${key}">
         <span class="muted">Начало</span>
         <select id="evFrom">${timeOpts(startIdx)}</select>
         <span class="muted">–</span>
