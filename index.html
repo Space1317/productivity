@@ -868,6 +868,16 @@ function renderGcalSetup() {
   }
   if (gcalError) {
     html += `<div class="notice">⚠ ${esc(gcalError)}</div>`;
+    const apiMatch = gcalError.match(/Google Calendar API has not been used|is disabled|not been used in project/);
+    if (apiMatch) {
+      const proj = (gcalError.match(/project (\d+)/) || [])[1] || '';
+      html += `<div class="notice">🛠 Решение: включите Google Calendar API в консоли.
+        <ol style="margin:6px 0 0 18px">
+          <li>Откройте <a href="https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview?project=${proj}" target="_blank" rel="noopener">страницу Calendar API</a>${proj ? ' (проект <code>' + proj + '</code>)' : ''}</li>
+          <li>Нажмите <b>Enable / Включить</b></li>
+          <li>Подождите 1–2 минуты и нажмите ниже «Обновить»</li>
+        </ol></div>`;
+    }
   }
 
   if (!state.gcal.clientId) {
