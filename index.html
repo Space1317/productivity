@@ -45,6 +45,11 @@
   }
   nav button:hover{color:var(--text);background:var(--card2)}
   nav button.active{color:#fff;background:var(--grad);box-shadow:0 4px 14px rgba(124,92,255,.35)}
+  .sync{font-size:12px;font-weight:700;padding:5px 12px;border-radius:20px;border:1px solid var(--border);background:var(--card2);color:var(--muted);margin-left:auto;white-space:nowrap;cursor:help}
+  .sync.ok{color:#7ee2a8;border-color:rgba(63,185,80,.4)}
+  .sync.work{color:var(--accent2);animation:blink 1.2s ease infinite}
+  .sync.err{color:var(--bad);border-color:rgba(248,81,73,.4)}
+  @keyframes blink{50%{opacity:.5}}
   main{max-width:980px;margin:0 auto;padding:22px 20px 80px}
   .tab{display:none;animation:fade .18s ease}
   .tab.active{display:block}
@@ -171,6 +176,7 @@
       <button data-act="tab" data-tab="calendar">Календарь</button>
       <button data-act="tab" data-tab="notes">Заметки</button>
     </nav>
+    <div class="sync off" id="syncStatus" title="Синхронизация данных">офлайн</div>
   </div>
 </header>
 
@@ -340,9 +346,10 @@ function defaults() {
       { id: uid(), text: 'Добро пожаловать в планер! Это заметки — кликните сюда и пишите что угодно. Всё сохраняется автоматически.', updatedAt: Date.now() }
     ],
     lockEnabled: false,
-    gcal: { clientId: '', token: null, tokenExpiry: 0, connected: false },
+    gcal: { clientId: '', token: null, tokenExpiry: 0, connected: false, plannerCalendarId: '', lastSyncAt: 0, syncError: '' },
     calMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
-    calDay: todayKey()
+    calDay: todayKey(),
+    meta: { deviceId: uid(), updatedAt: Date.now() }
   };
 }
 
@@ -356,16 +363,25 @@ function loadState() {
     return s;
   } catch (e) { return null; }
 }
-function saveState() {
+function saveState(opts) {
+  if (!opts || !opts.noBump) {
+    state.meta = state.meta || { deviceId: uid(), updatedAt: 0 };
+    state.meta.updatedAt = Date.now();
+  }
   try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { /* noop */ }
+  if ((!opts || !opts.noBump) && syncActive()) schedulePush();
 }
 let saveT;
 function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(saveState, 400); }
 
 state = loadState() || defaults();
 if (state.gcal == null) state.gcal = { clientId: '', token: null, tokenExpiry: 0, connected: false };
+if (!state.gcal.plannerCalendarId) state.gcal.plannerCalendarId = '';
+if (!state.gcal.lastSyncAt) state.gcal.lastSyncAt = 0;
+if (!state.gcal.syncError) state.gcal.syncError = '';
 if (!state.calMonth) state.calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
 if (!state.calDay) state.calDay = todayKey();
+if (!state.meta) state.meta = { deviceId: uid(), updatedAt: Date.now() };
 saveState();
 
 /* ================= логика привычек ================= */
@@ -572,6 +588,7 @@ async function gcalConnect() {
     monthCache = {};
     renderGcalSetup();
     await refreshAllGcal();
+    await pullState();
   } catch (err) {
     gcalError = 'Ошибка подключения: ' + err.message;
     renderGcalSetup();
@@ -645,10 +662,172 @@ async function refreshAllGcal() {
   renderToday();
 }
 
+/* ============ СИНХРОНИЗАЦИЯ ДАННЫХ ЧЕРЕЗ GOOGLE КАЛЕНДАРЬ ============
+   Состояние планера (задачи, привычки, заметки, лок) хранится как JSON-снапшот
+   в скрытом календаре «🪐 Планер» вашего Google-аккаунта. Крупный JSON бьётся
+   на чанки по CHUNK_SIZE символов — каждый чанк это отдельное событие.
+   localStorage — локальный кеш и офлайн-режим.
+   Конфликты: last-write-wins по метке updatedAt.
+*/
+var pushTimer = null;
+var pushing = false;
+var syncState = 'off'; // off | syncing | ok | error
+var PLANNER_TAG = 'planner-blob';
+var PLANNER_NAME = '🪐 Планер';
+var CHUNK_SIZE = 6000;
+
+function syncActive() {
+  return !!(state.gcal && state.gcal.clientId && state.gcal.token);
+}
+
+function chunkString(s, n) {
+  const out = [];
+  for (let i = 0; i < s.length; i += n) out.push(s.slice(i, i + n));
+  return out;
+}
+
+function futureDayKey(n) {
+  const d = new Date(); d.setDate(d.getDate() + n); return fmtDay(d);
+}
+
+function serializeState() {
+  return { habits: state.habits, tasks: state.tasks, notes: state.notes, lockEnabled: state.lockEnabled };
+}
+
+function applyRemoteState(data) {
+  if (!data) return;
+  if (Array.isArray(data.habits)) state.habits = data.habits;
+  if (Array.isArray(data.tasks)) state.tasks = data.tasks;
+  if (Array.isArray(data.notes)) state.notes = data.notes;
+  if (typeof data.lockEnabled === 'boolean') state.lockEnabled = data.lockEnabled;
+}
+
+function schedulePush() {
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => { pushTimer = null; doPush(); }, 1800);
+}
+
+function fmtTimeShort(t) {
+  return new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderSyncStatus() {
+  const el = $('syncStatus');
+  if (!el) return;
+  if (!syncActive()) {
+    el.textContent = 'офлайн';
+    el.className = 'sync off';
+    el.title = 'Синхронизация выключена — подключите Google Календарь';
+    return;
+  }
+  if (syncState === 'syncing') {
+    el.textContent = '↻ синхронизация…'; el.className = 'sync work';
+    el.title = 'Идёт синхронизация с Google';
+    return;
+  }
+  if (syncState === 'error') {
+    el.textContent = '⚠ ошибка'; el.className = 'sync err';
+    el.title = state.gcal.syncError || 'Ошибка синхронизации';
+    return;
+  }
+  el.textContent = state.gcal.lastSyncAt ? '☁️ синхронизировано ' + fmtTimeShort(state.gcal.lastSyncAt) : '☁️ синхронизация…';
+  el.className = 'sync ok';
+  el.title = 'Данные хранятся в скрытом календаре «🪐 Планер» вашего Google-аккаунта';
+}
+
+async function ensurePlannerCalendar() {
+  if (state.gcal.plannerCalendarId) return state.gcal.plannerCalendarId;
+  const list = await gcalApi('/users/me/calendarList?maxResults=250');
+  const found = (list.items || []).find(c => c.summary === PLANNER_NAME || c.id === state.gcal.plannerCalendarId);
+  if (found) { state.gcal.plannerCalendarId = found.id; saveState({ noBump: true }); return found.id; }
+  const cal = await gcalApi('/calendars', { method: 'POST', body: { summary: PLANNER_NAME } });
+  try {
+    // добавляем в список скрытым, чтобы не мелькал в интерфейсе Google Calendar
+    await gcalApi('/users/me/calendarList', { method: 'POST', body: { id: cal.id, selected: false, hidden: true } });
+  } catch (e) { /* не критично */ }
+  state.gcal.plannerCalendarId = cal.id;
+  saveState({ noBump: true });
+  return cal.id;
+}
+
+async function doPush() {
+  if (!syncActive() || pushing) return;
+  pushing = true; syncState = 'syncing'; renderSyncStatus();
+  try {
+    const calId = await ensurePlannerCalendar();
+    const snap = { v: 1, updatedAt: state.meta.updatedAt, data: serializeState() };
+    const json = JSON.stringify(snap);
+    const chunks = chunkString(json, CHUNK_SIZE);
+    const list = await gcalApi(`/calendars/${calId}/events?maxResults=250`);
+    const existing = new Map();
+    for (const ev of (list.items || [])) {
+      const pp = ev.extendedProperties && ev.extendedProperties.private;
+      if (pp && pp.tag === PLANNER_TAG) existing.set(Number(pp.idx), ev);
+    }
+    const makeBody = (text, i, total, upd) => ({
+      summary: PLANNER_NAME,
+      description: text,
+      start: { date: todayKey() },
+      end: { date: futureDayKey(1) },
+      extendedProperties: { private: { tag: PLANNER_TAG, idx: String(i), total: String(total), updatedAt: String(upd) } }
+    });
+    for (let i = 0; i < chunks.length; i++) {
+      const body = makeBody(chunks[i], i, chunks.length, snap.updatedAt);
+      const old = existing.get(i);
+      if (old) await gcalApi(`/calendars/${calId}/events/${old.id}`, { method: 'PUT', body });
+      else await gcalApi(`/calendars/${calId}/events`, { method: 'POST', body });
+    }
+    for (const [idx, ev] of existing) {
+      if (idx >= chunks.length) await gcalApi(`/calendars/${calId}/events/${ev.id}`, { method: 'DELETE' });
+    }
+    state.gcal.lastSyncAt = Date.now();
+    state.gcal.syncError = '';
+    saveState({ noBump: true });
+    syncState = 'ok'; renderSyncStatus();
+  } catch (e) {
+    state.gcal.syncError = e.message;
+    saveState({ noBump: true });
+    syncState = 'error'; renderSyncStatus();
+  } finally {
+    pushing = false;
+  }
+}
+
+async function pullState() {
+  if (!syncActive()) { renderSyncStatus(); return false; }
+  syncState = 'syncing'; renderSyncStatus();
+  try {
+    const calId = await ensurePlannerCalendar();
+    const list = await gcalApi(`/calendars/${calId}/events?maxResults=250`);
+    const evs = (list.items || [])
+      .filter(e => e.extendedProperties && e.extendedProperties.private && e.extendedProperties.private.tag === PLANNER_TAG)
+      .sort((a, b) => Number(a.extendedProperties.private.idx) - Number(b.extendedProperties.private.idx));
+    if (!evs.length) { await doPush(); return true; }
+    let json = '';
+    evs.forEach(e => json += (e.description || ''));
+    const snap = JSON.parse(json);
+    const localT = state.meta.updatedAt || 0;
+    if (snap.updatedAt > localT) {
+      applyRemoteState(snap.data);
+      state.meta.updatedAt = snap.updatedAt;
+      saveState({ noBump: true });
+      renderAll(); syncState = 'ok'; renderSyncStatus();
+      return true;
+    }
+    await doPush(); // локальная копия новее — выкладываем наверх
+    return false;
+  } catch (e) {
+    state.gcal.syncError = 'Ошибка чтения данных: ' + e.message;
+    saveState({ noBump: true });
+    syncState = 'error'; renderSyncStatus();
+    return false;
+  }
+}
+
 /* ================= рендеры ================= */
 function renderAll() {
   renderToday(); renderTasks(); renderHabits(); renderNotes();
-  renderGcalSetup(); renderCalendar();
+  renderGcalSetup(); renderCalendar(); renderSyncStatus();
 }
 
 function renderToday() {
@@ -695,7 +874,7 @@ function renderToday() {
   const badge = $('gcalTodayBadge');
   if (!state.gcal.clientId || !state.gcal.token) {
     badge.textContent = 'не подключён';
-    $('todayEvents').innerHTML = '<p class="muted">Подключите Google Календарь во вкладке «Календарь».</p>';
+    $('todayEvents').innerHTML = '<p class="muted">Подключите Google Календарь во вкладке «Календарь» — данные и события будут синхронизироваться между устройствами.</p>';
   } else {
     const map = eventsByDay();
     const evs = map[tKey] || [];
@@ -851,7 +1030,8 @@ function renderGcalSetup() {
   } else {
     html += `
       <h3 style="margin-bottom:10px">✓ Google Календарь подключён</h3>
-      <p class="muted" style="margin-bottom:12px">События читаются и добавляются в ваш личный календарь.</p>
+      <p class="muted" style="margin-bottom:12px">События читаются и добавляются в ваш личный календарь.<br>
+      Задачи, привычки и заметки синхронизируются между устройствами через скрытый календарь «🪐 Планер»: откройте эту страницу на другом устройстве и подключите тот же Google-аккаунт.</p>
       <button class="btn" data-act="gcalRefresh">Обновить</button>
       <button class="btn btn-ghost" data-act="gcalConnect" style="margin-left:8px">Переподключить</button>
       <button class="btn btn-ghost" data-act="gcalDisconnect" style="margin-left:8px">Отключить</button>`;
@@ -1046,7 +1226,7 @@ function exportData() {
   URL.revokeObjectURL(a.href);
 }
 function resetData() {
-  if (!confirm('Удалить все данные планера? Google-события не пострадают, удалятся только локальные настройки и задачи.')) return;
+  if (!confirm('Удалить все данные планера? При следующей синхронизации состояние отправится в Google Календарь (данные на других устройствах будут перезаписаны). Google-события не пострадают.')) return;
   localStorage.removeItem(LS_KEY);
   location.reload();
 }
@@ -1081,9 +1261,12 @@ function addHabit() {
 renderAll();
 showTab('today');
 const now = new Date();
-if (state.gcal.clientId && state.gcal.token) {
+if (syncActive()) {
   ensureEvents(now.getFullYear(), now.getMonth());
+  ensurePlannerCalendar().then(() => pullState()).catch(() => {});
 }
+window.addEventListener('focus', () => { if (syncActive()) pullState(); });
+setInterval(() => { if (syncActive()) pullState(); }, 45000);
 </script>
 </body>
 </html>
