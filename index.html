@@ -142,6 +142,7 @@
   .add-event label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
   .add-event .allday{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;border:1px solid var(--border);border-radius:10px;background:var(--bg2);padding:8px 10px;white-space:nowrap}
   .add-event .allday input{width:14px;height:14px;accent-color:var(--accent);cursor:pointer;margin:0}
+  .add-event .dur{font-size:12px;color:var(--muted);background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:4px 10px;white-space:nowrap}
   .add-event input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent)}
   .upcoming{color:var(--muted);font-size:13px;margin-top:4px}
   .upcoming li{padding:5px 0}
@@ -1008,6 +1009,20 @@ function timeOpts(selIdx) {
   return out;
 }
 
+// Живое превью длительности в форме создания события
+function updateEvDurPreview() {
+  const el = $('evDurPreview');
+  if (!el) return;
+  const allDayCb = $('evAllDay'), f = $('evFrom'), t = $('evTo');
+  if (!allDayCb || !f || !t) return;
+  if (allDayCb.checked || !f.value || !t.value) { el.style.display = 'none'; return; }
+  const toMin = v => { const p = v.split(':'); return Number(p[0]) * 60 + Number(p[1]); };
+  const diff = toMin(t.value) - toMin(f.value);
+  if (diff <= 0) { el.style.display = 'none'; return; }
+  el.textContent = fmtDur(diff * 60000);
+  el.style.display = '';
+}
+
 function renderDayPanel() {
   const key = state.calDay;
   const map = eventsByDay();
@@ -1047,9 +1062,10 @@ function renderDayPanel() {
       </div>
       <div class="row">
         <input type="date" id="evDate" value="${key}">
-        <select id="evFrom">${timeOpts(startIdx)}</select>
+        <select id="evFrom" data-act="evWhen">${timeOpts(startIdx)}</select>
         <span class="muted" style="font-size:13px">—</span>
-        <select id="evTo">${timeOpts(endIdx)}</select>
+        <select id="evTo" data-act="evWhen">${timeOpts(endIdx)}</select>
+        <span class="dur" id="evDurPreview" style="display:none"></span>
         <label class="allday"><input type="checkbox" id="evAllDay" data-act="evAllDay"><span>Весь день</span></label>
       </div>
       <div class="row">
@@ -1059,6 +1075,7 @@ function renderDayPanel() {
     </div>
   </div>`;
   $('dayPanel').innerHTML = html;
+  updateEvDurPreview();
 }
 
 /* ================= вкладки ================= */
@@ -1127,7 +1144,9 @@ document.addEventListener('change', e => {
   else if (act === 'evAllDay') {
     const f = $('evFrom'), to = $('evTo');
     if (f && to) { f.disabled = t.checked; to.disabled = t.checked; }
+    updateEvDurPreview();
   }
+  else if (act === 'evWhen') { updateEvDurPreview(); }
 });
 
 document.addEventListener('keydown', e => {
