@@ -594,7 +594,7 @@ function parseEvent(it) {
     startMs = sd.getTime();
     endMs = ed ? ed.getTime() : sd.getTime();
     time = sd.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-    if (ed && ed.getDate() !== sd.getDate()) time += '–' + ed.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    if (ed) time += ' – ' + ed.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   }
   const dur = allDay ? '' : fmtDur(endMs - startMs);
   return { key, ev: { id: it.id, summary: it.summary || '(без названия)', allDay, time, startMs, endMs, dur } };
