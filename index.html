@@ -579,6 +579,14 @@ function addList() {
   inp.value = '';
   saveState(); renderToday(); renderTasks();
 }
+function moveList(id, dir) {
+  const i = state.lists.findIndex(l => l.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= state.lists.length) return;
+  const [l] = state.lists.splice(i, 1);
+  state.lists.splice(j, 0, l);
+  saveState(); renderToday(); renderTasks();
+}
 function deleteList(id) {
   if (state.lists.length <= 1) { alert('Нельзя удалить последнюю категорию.'); return; }
   const l = state.lists.find(x => x.id === id);
@@ -1247,6 +1255,10 @@ function renderTasks() {
       <div class="lcard-head">
         <span class="lname" data-act="renameList" data-id="${l.id}" title="Клик — переименовать"><span class="lpen">✎</span><span class="ltext">${esc(l.name)}</span></span>
         <span class="cnt muted">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span>
+        <span class="ctrl-row">
+          <button class="ic" data-act="moveList" data-id="${l.id}" data-dir="-1" title="Переместить выше">↑</button>
+          <button class="ic" data-act="moveList" data-id="${l.id}" data-dir="1" title="Переместить ниже">↓</button>
+        </span>
         <button class="ic del" data-act="delList" data-id="${l.id}" title="Удалить категорию">✕</button>
       </div>
       ${normHtml}
@@ -1641,6 +1653,7 @@ document.addEventListener('click', e => {
     case 'delTask': deleteTask(t.dataset.id); break;
     case 'lockTask': toggleTaskLock(t.dataset.id); break;
     case 'delList': deleteList(t.dataset.id); break;
+    case 'moveList': moveList(t.dataset.id, Number(t.dataset.dir)); break;
     case 'renameList': renameList(t.dataset.id); break;
     case 'delNote': deleteNote(t.dataset.id); break;
     case 'delNoteList': deleteNoteCategory(t.dataset.id); break;
