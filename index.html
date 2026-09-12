@@ -94,7 +94,11 @@
   .add-list-top input{flex:1;max-width:340px}
   .lcard{border:1px solid var(--border);border-radius:12px;background:var(--bg2);padding:12px;margin-bottom:12px}
   .lcard-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
-  .lname{font-weight:700;font-size:14px;flex:1;word-break:break-word}
+  .lname{font-weight:700;font-size:14px;flex:1;word-break:break-word;cursor:pointer;display:flex;align-items:center;gap:4px}
+  .lname:hover{color:var(--accent2)}
+  .lname-input{font:inherit;font-weight:700;font-size:14px;flex:1;min-width:0;padding:4px 8px;color:var(--text);background:var(--bg);border:1px solid var(--accent);border-radius:8px;outline:none}
+  .list-sep{display:flex;align-items:center;gap:10px;margin:10px 0 4px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .list-sep::before,.list-sep::after{content:'';flex:1;border-top:1px solid var(--border)}
   .lcard-divider{border-top:1px solid var(--border);margin:10px 0}
   .lcard-add{display:flex;gap:10px}
   .lcard-add input{flex:1}
@@ -102,7 +106,8 @@
   /* драг задач */
   .task-row{cursor:grab}
   .task-row .grip{color:var(--muted);cursor:grab;font-size:15px;flex:none;user-select:none}
-  .task-row .ic.lock.on{color:var(--warn)}
+  .task-row .lock-btn{border:1px solid var(--border);border-radius:8px;padding:3px 8px;font-size:12px}
+  .task-row .lock-btn.on{background:rgba(210,153,34,.15);border-color:var(--warn);color:var(--warn)}
   .task-row.dragging{opacity:.4;border:1px dashed var(--accent);border-radius:10px}
   .task-row.drag-over{border-color:var(--accent)}
   .list .tl-head{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:10px 8px 2px;border-bottom:none}
@@ -1017,42 +1022,80 @@ function renderMiniToday() {
     : '<p class="muted">В этот день событий нет.</p>';
 }
 
+function taskRowHTML(t, compact) {
+  const lst = listOfTask(t.id);
+  const bl = taskBlocked(t, lst);
+  const lockInd = t.locked
+    ? (compact
+      ? `<span class="lock" title="${bl ? 'Залочена: ждёт выполнения остальных задач' : 'Залочена вручную'}">${bl ? '⏳' : '🔒'}</span>`
+      : `<button class="ic lock-btn${t.locked ? ' on' : ''}" data-act="lockTask" data-id="${t.id}"
+          title="${t.locked ? 'Лок активен — нажмите, чтобы снять' : 'Залочить: выполнить можно, только когда отмечены все остальные в категории'}">${t.locked ? '🔓' : '🔒'}</button>`)
+    : '';
+  return `<li class="task-row ${t.done ? 'done' : ''} ${bl ? 'blocked' : ''}" data-id="${t.id}" ${compact ? '' : 'draggable="true"'}>
+    ${compact ? '' : `<span class="grip" title="Перетащите, чтобы переместить">≣</span>`}
+    <input type="checkbox" data-act="toggleTask" data-id="${t.id}" ${t.done ? 'checked' : ''} ${bl ? 'disabled' : ''}>
+    <span class="task-text"${bl ? ' title="Залочена: выполните остальные задачи в категории"' : ''}>${esc(t.text)}</span>
+    ${lockInd}
+    ${compact ? '' : `<span class="ctrl-row"><button class="ic del" data-act="delTask" data-id="${t.id}" title="Удалить">✕</button></span>`}
+  </li>`;
+}
 function tasksHtml(lst, compact) {
   if (!lst || !lst.tasks.length) return '<li class="muted">Задач пока нет.</li>';
-  return lst.tasks.map(t => {
-    const bl = taskBlocked(t, lst);
-    const lockInd = t.locked
-      ? (compact
-        ? `<span class="lock" title="${bl ? 'Залочена: ждёт выполнения остальных задач' : 'Залочена вручную'}">${bl ? '⏳' : '🔒'}</span>`
-        : `<button class="ic lock${t.locked ? ' on' : ''}" data-act="lockTask" data-id="${t.id}"
-            title="${t.locked ? 'Лок активен — нажмите, чтобы снять' : 'Залочить: можно выполнить, только когда отмечены все остальные в категории'}">${t.locked ? '🔓' : '🔒'}</button>`)
-      : '';
-    return `<li class="task-row ${t.done ? 'done' : ''} ${bl ? 'blocked' : ''}" data-id="${t.id}" ${compact ? '' : 'draggable="true"'}>
-      ${compact ? '' : `<span class="grip" title="Перетащите, чтобы переместить">≣</span>`}
-      <input type="checkbox" data-act="toggleTask" data-id="${t.id}" ${t.done ? 'checked' : ''} ${bl ? 'disabled' : ''}>
-      <span class="task-text"${bl ? ' title="Залочена: выполните остальные задачи в категории"' : ''}>${esc(t.text)}</span>
-      ${lockInd}
-      ${compact ? '' : `<span class="ctrl-row"><button class="ic del" data-act="delTask" data-id="${t.id}" title="Удалить">✕</button></span>`}
-    </li>`;
-  }).join('');
+  return lst.tasks.map(t => taskRowHTML(t, compact)).join('');
 }
 
 function renderTasks() {
-  const stack = state.lists.map(l => `
+  const stack = state.lists.map(l => {
+    const norm = l.tasks.filter(t => !t.locked);
+    const lockd = l.tasks.filter(t => t.locked);
+    const normHtml = norm.length
+      ? `<ul class="list">${norm.map(t => taskRowHTML(t, false)).join('')}</ul>`
+      : (l.tasks.length ? '' : '<p class="muted" style="font-size:13px;padding:6px 4px">В категории пока нет задач.</p>');
+    const lockHtml = lockd.length
+      ? `<div class="list-sep"><span>🔒 Залоченные</span></div><ul class="list">${lockd.map(t => taskRowHTML(t, false)).join('')}</ul>`
+      : '';
+    return `
     <div class="lcard">
       <div class="lcard-head">
-        <span class="lname">${esc(l.name)}</span>
+        <span class="lname" data-act="renameList" data-id="${l.id}" title="Клик — переименовать">✎&nbsp;${esc(l.name)}</span>
         <span class="cnt muted">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span>
         <button class="ic del" data-act="delList" data-id="${l.id}" title="Удалить категорию">✕</button>
       </div>
-      <ul class="list">${tasksHtml(l, false)}</ul>
+      ${normHtml}
+      ${lockHtml}
       <div class="lcard-divider"></div>
       <div class="lcard-add">
         <input type="text" class="task-input-local" data-list="${l.id}" placeholder="Новая задача…" autocomplete="off">
         <button class="btn" data-act="addTaskBtn" data-list="${l.id}">Добавить</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   $('listStack').innerHTML = stack;
+}
+
+function renameList(id) {
+  const el = document.querySelector(`.lname[data-id="${id}"]`);
+  const l = state.lists.find(x => x.id === id);
+  if (!el || !l) return;
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'lname-input';
+  inp.value = l.name;
+  el.innerHTML = '';
+  el.appendChild(inp);
+  inp.focus(); inp.select();
+  let finished = false;
+  const commit = save => {
+    if (finished) return;
+    finished = true;
+    if (save) { const v = inp.value.trim(); if (v) l.name = v; }
+    saveState(); renderToday(); renderTasks();
+  };
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+  });
+  inp.addEventListener('blur', () => commit(true));
 }
 
 function renderHabits() {
@@ -1365,6 +1408,7 @@ document.addEventListener('click', e => {
     case 'delTask': deleteTask(t.dataset.id); break;
     case 'lockTask': toggleTaskLock(t.dataset.id); break;
     case 'delList': deleteList(t.dataset.id); break;
+    case 'renameList': renameList(t.dataset.id); break;
     case 'addListBtn': addList(); break;
     case 'delHabit': state.habits = state.habits.filter(h => h.id !== t.dataset.id); saveState(); renderToday(); renderHabits(); break;
     case 'addTaskBtn': addTask(t.dataset.list); break;
