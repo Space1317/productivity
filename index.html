@@ -341,16 +341,6 @@
     <p class="sub">Ежедневные привычки: отмечайте за каждый день, следите за прогрессом на неделе.</p>
 
     <div class="card">
-      <div class="add-row">
-        <input type="text" id="habitInput" placeholder="Новая привычка…" autocomplete="off">
-        <button class="btn" data-act="addHabitBtn">Добавить</button>
-      </div>
-      <div class="chart" id="habitChart"></div>
-      <ul class="list" id="habitList"></ul>
-      <p class="muted" id="habitEmpty" style="display:none;font-size:13px;padding:8px 4px">Привычек пока нет.</p>
-    </div>
-
-    <div class="card">
       <div class="cal-nav">
         <button data-act="mPrev" title="Предыдущий месяц">‹</button>
         <button data-act="mToday">Сегодня</button>
@@ -359,6 +349,16 @@
       </div>
       <div class="chart" id="habitMonthChart"></div>
       <div id="habitMonthList"></div>
+    </div>
+
+    <div class="card">
+      <div class="add-row">
+        <input type="text" id="habitInput" placeholder="Новая привычка…" autocomplete="off">
+        <button class="btn" data-act="addHabitBtn">Добавить</button>
+      </div>
+      <div class="chart" id="habitChart"></div>
+      <ul class="list" id="habitList"></ul>
+      <p class="muted" id="habitEmpty" style="display:none;font-size:13px;padding:8px 4px">Привычек пока нет.</p>
     </div>
   </section>
 
