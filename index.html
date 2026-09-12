@@ -1025,12 +1025,10 @@ function renderMiniToday() {
 function taskRowHTML(t, compact) {
   const lst = listOfTask(t.id);
   const bl = taskBlocked(t, lst);
-  const lockInd = t.locked
-    ? (compact
-      ? `<span class="lock" title="${bl ? 'Залочена: ждёт выполнения остальных задач' : 'Залочена вручную'}">${bl ? '⏳' : '🔒'}</span>`
-      : `<button class="ic lock-btn${t.locked ? ' on' : ''}" data-act="lockTask" data-id="${t.id}"
-          title="${t.locked ? 'Лок активен — нажмите, чтобы снять' : 'Залочить: выполнить можно, только когда отмечены все остальные в категории'}">${t.locked ? '🔓' : '🔒'}</button>`)
-    : '';
+  const lockInd = compact
+    ? (t.locked ? `<span class="lock" title="${bl ? 'Залочена: ждёт выполнения остальных задач' : 'Залочена вручную'}">${bl ? '⏳' : '🔒'}</span>` : '')
+    : `<button class="ic lock-btn${t.locked ? ' on' : ''}" data-act="lockTask" data-id="${t.id}"
+        title="${t.locked ? 'Лок активен — нажмите, чтобы снять' : 'Залочить: выполнить можно, только когда отмечены все остальные в категории'}">${t.locked ? '🔓' : '🔒'}</button>`;
   return `<li class="task-row ${t.done ? 'done' : ''} ${bl ? 'blocked' : ''}" data-id="${t.id}" ${compact ? '' : 'draggable="true"'}>
     ${compact ? '' : `<span class="grip" title="Перетащите, чтобы переместить">≣</span>`}
     <input type="checkbox" data-act="toggleTask" data-id="${t.id}" ${t.done ? 'checked' : ''} ${bl ? 'disabled' : ''}>
