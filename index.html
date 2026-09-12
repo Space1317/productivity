@@ -90,16 +90,15 @@
   .toggle-line{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);margin-bottom:12px;cursor:pointer;user-select:none}
   .toggle-line input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
   /* категории задач */
-  .lists-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
-  .list-pills{display:flex;flex-wrap:wrap;gap:6px}
-  .pill{font:inherit;font-size:13px;font-weight:600;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.12s}
-  .pill:hover{color:var(--text)}
-  .pill.active{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 3px 10px rgba(255,122,24,.3)}
-  .pill .cnt{font-size:11px;opacity:.85}
-  .pill .x{color:inherit;opacity:.6;font-size:12px;padding:0 2px;cursor:pointer;border:none;background:none}
-  .pill .x:hover{opacity:1;color:var(--bad)}
-  .list-add{display:flex;gap:6px;align-items:center}
-  .list-add input{width:180px;padding:7px 10px;font-size:13px}
+  .add-list-top{display:flex;gap:10px;margin-bottom:10px}
+  .add-list-top input{flex:1;max-width:340px}
+  .lcard{border:1px solid var(--border);border-radius:12px;background:var(--bg2);padding:12px;margin-bottom:12px}
+  .lcard-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+  .lname{font-weight:700;font-size:14px;flex:1;word-break:break-word}
+  .lcard-divider{border-top:1px solid var(--border);margin:10px 0}
+  .lcard-add{display:flex;gap:10px}
+  .lcard-add input{flex:1}
+  .lcard .list{margin-bottom:2px}
   /* драг задач */
   .task-row{cursor:grab}
   .task-row .grip{color:var(--muted);cursor:grab;font-size:15px;flex:none;user-select:none}
@@ -287,19 +286,12 @@
     <p class="sub">Задачи по категориям: перетаскивайте их для сортировки, а 🔒 залочит задачу — выполнить её можно, только когда отмечены все остальные в категории.</p>
 
     <div class="card">
-      <div class="lists-bar">
-        <div class="list-pills" id="listPills"></div>
-        <div class="list-add">
-          <input type="text" id="listNameInput" placeholder="Новая категория (Enter)" autocomplete="off">
-          <button class="btn btn-ghost" data-act="addListBtn">+ Категория</button>
-        </div>
+      <div class="add-list-top">
+        <input type="text" id="listNameInput" placeholder="Новая категория… (Enter)" autocomplete="off">
+        <button class="btn btn-ghost" data-act="addListBtn">+ Категория</button>
       </div>
-      <div class="add-row">
-        <input type="text" id="taskInput" placeholder="Новая задача…" autocomplete="off">
-        <button class="btn" data-act="addTaskBtn">Добавить</button>
-      </div>
-      <ul class="list" id="taskList"></ul>
-      <p class="muted" id="taskHint" style="font-size:12px;margin-top:10px">Перетащите строку за ≣, чтобы поменять порядок. Лок 🔒: задача станет доступна для отметки, когда все остальные в категории выполнены.</p>
+      <p class="muted" id="taskHint" style="font-size:12px;margin:0 0 14px">Категории идут друг под другом, под чёрточкой каждой — свои задачи. Перетаскивайте строки за ≣, 🔒 залочит задачу, пока не готовы остальные.</p>
+      <div id="listStack"></div>
     </div>
   </section>
 
@@ -475,12 +467,14 @@ function taskBlocked(t, lst) {
   lst = lst || listOfTask(t.id);
   return lst.tasks.some(x => x.id !== t.id && !x.done);
 }
-function addTask() {
-  const inp = $('taskInput');
-  const text = inp.value.trim();
-  if (!text) { inp.focus(); return; }
-  activeList().tasks.push({ id: uid(), text, done: false, locked: false, createdAt: todayKey() });
-  inp.value = ''; saveState(); renderToday(); renderTasks(); inp.focus();
+function addTask(listId) {
+  const inp = listId ? document.querySelector(`.task-input-local[data-list="${listId}"]`) : $('taskInput');
+  const text = (inp && inp.value || '').trim();
+  if (!text) { if (inp) inp.focus(); return; }
+  const lst = state.lists.find(l => l.id === listId) || activeList();
+  lst.tasks.push({ id: uid(), text, done: false, locked: false, createdAt: todayKey() });
+  if (inp) inp.value = '';
+  saveState(); renderToday(); renderTasks(); if (inp) inp.focus();
 }
 function deleteTask(id) {
   const lst = listOfTask(id);
@@ -507,7 +501,7 @@ function toggleTaskLock(id) {
 /* перетаскивание задач (drag & drop) */
 var dragTaskId = null;
 function dropTask(targetId, after) {
-  const lst = activeList();
+  const lst = listOfTask(dragTaskId);
   if (!lst) return;
   const from = lst.tasks.findIndex(t => t.id === dragTaskId);
   if (from < 0) return;
@@ -537,9 +531,6 @@ function deleteList(id) {
   state.lists = state.lists.filter(x => x.id !== id);
   if (state.activeListId === id) state.activeListId = state.lists[0].id;
   saveState(); renderToday(); renderTasks();
-}
-function setList(id) {
-  if (state.lists.some(l => l.id === id)) { state.activeListId = id; saveState(); renderTasks(); }
 }
 
 /* ================= логика заметок ================= */
@@ -1047,13 +1038,21 @@ function tasksHtml(lst, compact) {
 }
 
 function renderTasks() {
-  const pills = state.lists.map(l => `
-    <button class="pill ${l.id === state.activeListId ? 'active' : ''}" data-act="setList" data-id="${l.id}">
-      ${esc(l.name)} <span class="cnt">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span>
-      <span class="x" data-act="delList" data-id="${l.id}" title="Удалить категорию">✕</span>
-    </button>`).join('');
-  $('listPills').innerHTML = pills;
-  $('taskList').innerHTML = tasksHtml(activeList(), false);
+  const stack = state.lists.map(l => `
+    <div class="lcard">
+      <div class="lcard-head">
+        <span class="lname">${esc(l.name)}</span>
+        <span class="cnt muted">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span>
+        <button class="ic del" data-act="delList" data-id="${l.id}" title="Удалить категорию">✕</button>
+      </div>
+      <ul class="list">${tasksHtml(l, false)}</ul>
+      <div class="lcard-divider"></div>
+      <div class="lcard-add">
+        <input type="text" class="task-input-local" data-list="${l.id}" placeholder="Новая задача…" autocomplete="off">
+        <button class="btn" data-act="addTaskBtn" data-list="${l.id}">Добавить</button>
+      </div>
+    </div>`).join('');
+  $('listStack').innerHTML = stack;
 }
 
 function renderHabits() {
@@ -1365,11 +1364,10 @@ document.addEventListener('click', e => {
     case 'tab': showTab(t.dataset.tab); break;
     case 'delTask': deleteTask(t.dataset.id); break;
     case 'lockTask': toggleTaskLock(t.dataset.id); break;
-    case 'setList': setList(t.dataset.id); break;
     case 'delList': deleteList(t.dataset.id); break;
     case 'addListBtn': addList(); break;
     case 'delHabit': state.habits = state.habits.filter(h => h.id !== t.dataset.id); saveState(); renderToday(); renderHabits(); break;
-    case 'addTaskBtn': addTask(); break;
+    case 'addTaskBtn': addTask(t.dataset.list); break;
     case 'addHabitBtn': addHabit(); break;
     case 'addNoteBtn': addNote(); break;
     case 'delNote': deleteNote(t.dataset.id); break;
@@ -1415,9 +1413,9 @@ document.addEventListener('change', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'taskInput') addTask();
   if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'habitInput') addHabit();
   if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'listNameInput') addList();
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.classList.contains('task-input-local')) addTask(document.activeElement.dataset.list);
   if (e.key === 'Escape') closeEvModal();
 });
 
@@ -1433,6 +1431,8 @@ document.addEventListener('dragstart', e => {
 document.addEventListener('dragover', e => {
   const row = e.target.closest('.task-row');
   if (!row || !dragTaskId || row.dataset.id === dragTaskId) return;
+  const la = listOfTask(dragTaskId), lb = listOfTask(row.dataset.id);
+  if (!la || la !== lb) return; // перетаскивание только внутри своей категории
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
   const rect = row.getBoundingClientRect();
