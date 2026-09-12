@@ -198,6 +198,19 @@
   .evm-desc{margin:12px 0;font-size:14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;line-height:1.55;word-break:break-word}
   .evm-desc a,.evm-link a,.evm-ext a{color:var(--accent2)}
   .evm-ext{margin-top:12px;font-size:13px}
+  .timerbox{flex:1 1 420px;max-width:560px}
+  .today-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+  .timer-idle,.timer-run{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .timer-label{font-size:13px;font-weight:700;color:var(--muted);margin-right:2px}
+  .ic.preset{font-size:12px;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--muted)}
+  .ic.preset:hover{color:var(--accent2);border-color:var(--accent)}
+  #timerCustom{width:64px;padding:6px 8px;font:inherit;font-size:13px;color:var(--text);background:var(--bg2);border:1px solid var(--border);border-radius:8px;outline:none}
+  #timerCustom:focus{border-color:var(--accent)}
+  .timer-run .timer-time{font-size:24px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums;color:var(--accent2);min-width:110px}
+  .timer-bar{height:6px;background:var(--bg);border-radius:20px;overflow:hidden;margin-top:8px}
+  .timer-bar-fill{height:100%;background:var(--grad);border-radius:20px;transition:width .25s linear}
+  .timerfloat{position:fixed;right:18px;bottom:18px;z-index:60;display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--accent);color:var(--text);font-weight:700;font-size:15px;padding:10px 16px;border-radius:30px;box-shadow:0 8px 30px rgba(0,0,0,.45);cursor:pointer;font-variant-numeric:tabular-nums}
+  .timerfloat.ended{border-color:var(--bad);color:var(--bad);animation:blink 1s ease infinite}
   .evm-label{display:block;font-size:13px;font-weight:600;margin:14px 0 6px}
   .modal textarea{width:100%;min-height:90px;resize:vertical;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font:inherit}
   .modal hr{border:none;border-top:1px solid var(--border);margin:14px 0 4px}
@@ -254,8 +267,13 @@
 
   <!-- ============ СЕГОДНЯ ============ -->
   <section id="tab-today" class="tab active">
-    <h2 class="page-title" id="todayDateLabel"></h2>
-    <p class="sub" id="todaySubLabel"></p>
+    <div class="today-head">
+      <div>
+        <h2 class="page-title" id="todayDateLabel"></h2>
+        <p class="sub" id="todaySubLabel" style="margin-bottom:0"></p>
+      </div>
+      <div class="timerbox" id="timerBox"></div>
+    </div>
 
     <div class="today-cal-row">
       <div class="card" style="margin-bottom:0">
@@ -311,7 +329,7 @@
     <div class="card">
       <div class="add-list-top">
         <input type="text" id="listNameInput" placeholder="Новая категория… (Enter)" autocomplete="off">
-        <button class="btn btn-ghost" data-act="addListBtn">+ Категория</button>
+        <button class="btn" data-act="addListBtn">Добавить</button>
       </div>
       <div id="listStack"></div>
     </div>
@@ -372,7 +390,7 @@
     <div class="card">
       <div class="add-list-top">
         <input type="text" id="noteListNameInput" placeholder="Новая категория заметок… (Enter)" autocomplete="off">
-        <button class="btn btn-ghost" data-act="addNoteListBtn">+ Категория</button>
+        <button class="btn" data-act="addNoteListBtn">Добавить</button>
       </div>
       <div id="notesStack"></div>
     </div>
@@ -386,6 +404,8 @@
     <div id="evModalBody"></div>
   </div>
 </div>
+
+<div class="timerfloat" id="timerFloat" style="display:none" title="Нажмите, чтобы остановить таймер">⏱ <span id="timerFloatTime"></span></div>
 
 <script>
 'use strict';
@@ -440,6 +460,7 @@ function defaults() {
       ] }
     ],
     habitMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
+    timer: { label: '', durationMs: 0, endAt: 0 },
     gcal: { clientId: '', token: null, tokenExpiry: 0, connected: false },
     calMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
     calDay: todayKey()
@@ -483,6 +504,7 @@ if (!Array.isArray(state.noteLists)) {
 state.noteLists.forEach(l => { if (!Array.isArray(l.notes)) l.notes = []; });
 delete state.notes;
 if (!state.habitMonth || typeof state.habitMonth.y === 'undefined') state.habitMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
+if (!state.timer || typeof state.timer.endAt === 'undefined') state.timer = { label: '', durationMs: 0, endAt: 0 };
 if (state.gcal == null) state.gcal = { clientId: '', token: null, tokenExpiry: 0, connected: false };
 if (!state.calMonth) state.calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
 if (!state.calDay) state.calDay = todayKey();
@@ -1062,7 +1084,93 @@ function renderToday() {
   const bar = $('dayProgressBar');
   bar.style.width = pct + '%';
   bar.classList.toggle('full', pct === 100);
+  renderTimerBox();
 }
+
+/* ================= ТАЙМЕР ================= */
+var flashUntil = 0;
+function fmtTimeLeft(ms) {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(s / 60), ss = s % 60;
+  return (m > 99 ? String(m) : String(m).padStart(2, '0')) + ':' + String(ss).padStart(2, '0');
+}
+function startTimer(min) {
+  min = Math.max(1, Math.min(min, 720));
+  state.timer = { label: min + ' мин', durationMs: min * 60000, endAt: Date.now() + min * 60000 };
+  flashUntil = 0;
+  saveState(); renderToday();
+}
+function stopTimer() {
+  state.timer = { label: '', durationMs: 0, endAt: 0 };
+  saveState(); renderToday();
+}
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sine'; g.gain.value = 0.18;
+    const t = ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      o.frequency.setValueAtTime(880, t + i * 0.5);
+      o.frequency.setValueAtTime(660, t + i * 0.5 + 0.25);
+    }
+    o.start(t); o.stop(t + 1.6);
+  } catch (e) { /* звук недоступен */ }
+}
+function renderTimerBox() {
+  const box = $('timerBox');
+  if (!box) return;
+  const t = state.timer;
+  const running = !!(t.endAt && t.endAt > Date.now());
+  if (running) {
+    const rem = t.endAt - Date.now();
+    box.innerHTML = `
+      <div class="timer-run">
+        <span class="timer-label">⏱ ${esc(t.label || 'Таймер')}</span>
+        <span class="timer-time">${fmtTimeLeft(rem)}</span>
+        <button class="btn" data-act="timerStop">Стоп</button>
+      </div>
+      <div class="timer-bar"><div class="timer-bar-fill" style="width:${Math.max(0, rem / t.durationMs * 100)}%"></div></div>`;
+  } else {
+    box.innerHTML = `
+      <div class="timer-idle">
+        <span class="timer-label">⏱ Таймер</span>
+        <button class="ic preset" data-act="timerStart" data-min="5">5 мин</button>
+        <button class="ic preset" data-act="timerStart" data-min="10">10 мин</button>
+        <button class="ic preset" data-act="timerStart" data-min="15">15 мин</button>
+        <button class="ic preset" data-act="timerStart" data-min="25">25 мин</button>
+        <button class="ic preset" data-act="timerStart" data-min="45">45 мин</button>
+        <input type="number" id="timerCustom" min="1" max="720" placeholder="мин" title="Свой таймер">
+        <button class="btn" data-act="timerStartCustom">Пуск</button>
+      </div>`;
+  }
+}
+function tick() {
+  const f = $('timerFloat');
+  const t = state.timer;
+  if (t.endAt) {
+    const rem = t.endAt - Date.now();
+    if (rem <= 0) {
+      if (!flashUntil) { flashUntil = Date.now() + 10000; beep(); state.timer = { label: '', durationMs: 0, endAt: 0 }; saveState(); renderTimerBox(); }
+      f.style.display = 'flex'; f.classList.add('ended');
+      $('timerFloatTime').textContent = '⏰ Время вышло';
+    } else {
+      f.style.display = 'flex'; f.classList.remove('ended');
+      $('timerFloatTime').textContent = fmtTimeLeft(rem);
+      const el = $('timerTime'); if (el) el.textContent = fmtTimeLeft(rem);
+      const fill = $('timerBarFill'); if (fill) fill.style.width = (rem / t.durationMs * 100) + '%';
+    }
+  } else if (flashUntil) {
+    if (Date.now() > flashUntil) { flashUntil = 0; f.style.display = 'none'; f.classList.remove('ended'); }
+  } else {
+    f.style.display = 'none';
+  }
+}
+$('timerFloat').addEventListener('click', () => {
+  if (state.timer.endAt) stopTimer();
+  flashUntil = 0; $('timerFloat').classList.remove('ended'); $('timerFloat').style.display = 'none';
+});
 
 function renderMiniToday() {
   const { y, m } = state.calMonth;
@@ -1542,6 +1650,9 @@ document.addEventListener('click', e => {
     case 'mPrev': { const c = state.habitMonth; state.habitMonth = { y: c.m === 0 ? c.y - 1 : c.y, m: c.m === 0 ? 11 : c.m - 1 }; saveState(); renderHabits(); break; }
     case 'mNext': { const c = state.habitMonth; state.habitMonth = { y: c.m === 11 ? c.y + 1 : c.y, m: c.m === 11 ? 0 : c.m + 1 }; saveState(); renderHabits(); break; }
     case 'mToday': { const nn = new Date(); state.habitMonth = { y: nn.getFullYear(), m: nn.getMonth() }; saveState(); renderHabits(); break; }
+    case 'timerStart': startTimer(Number(t.dataset.min)); break;
+    case 'timerStartCustom': { const v = Number(($('timerCustom') || {}).value); if (v && v > 0) startTimer(v); break; }
+    case 'timerStop': stopTimer(); break;
     case 'addListBtn': addList(); break;
     case 'delHabit': state.habits = state.habits.filter(h => h.id !== t.dataset.id); saveState(); renderToday(); renderHabits(); break;
     case 'addTaskBtn': addTask(t.dataset.list); break;
@@ -1730,6 +1841,8 @@ function addHabit() {
 /* ================= init ================= */
 renderAll();
 showTab('today');
+tick();
+setInterval(tick, 500);
 const now = new Date();
 if (state.gcal.clientId && state.gcal.token) {
   ensureEvents(now.getFullYear(), now.getMonth());
