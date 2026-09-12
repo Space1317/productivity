@@ -169,6 +169,19 @@
   .note .meta{display:flex;align-items:center;gap:10px;margin-top:6px;font-size:12px;color:var(--muted)}
   .note .meta .time{flex:1}
   .muted{color:var(--muted)}
+  .today-cal-row{display:grid;grid-template-columns:1fr 1.4fr;gap:16px;margin-bottom:16px}
+  .mini-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+  .mcal-dow{text-align:center;font-size:10px;font-weight:700;color:var(--muted);padding:2px 0}
+  .mcal-cell{min-height:34px;display:flex;align-items:center;justify-content:center;position:relative;border-radius:8px;background:var(--bg2);border:1px solid transparent;cursor:pointer;font-size:13px;transition:.1s}
+  .mcal-cell:hover{border-color:var(--muted)}
+  .mcal-cell.empty{background:transparent;cursor:default}
+  .mcal-cell.today{color:var(--accent2);font-weight:800}
+  .mcal-cell.sel{background:var(--grad);color:#fff;font-weight:700}
+  .mcal-dot{position:absolute;bottom:2px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:50%;background:var(--accent2)}
+  .mcal-cell.sel .mcal-dot{background:#fff}
+  #miniEvList{display:flex;flex-direction:column;gap:8px}
+  #miniEvList .ev{margin-bottom:0}
+  @media (max-width:860px){.today-cal-row{grid-template-columns:1fr}}
   details.howto{margin-top:10px;font-size:13px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
   details.howto summary{cursor:pointer;font-weight:600;color:var(--text)}
   details.howto ol,details.howto ul{margin:8px 0 0 18px;line-height:1.7}
@@ -203,6 +216,27 @@
     <h2 class="page-title" id="todayDateLabel"></h2>
     <p class="sub" id="todaySubLabel"></p>
 
+    <div class="today-cal-row">
+      <div class="card" style="margin-bottom:0">
+        <div class="cal-nav">
+          <button data-act="miniPrev" title="Предыдущий месяц">‹</button>
+          <button data-act="miniToday">Сегодня</button>
+          <button data-act="miniNext" title="Следующий месяц">›</button>
+          <h4 id="miniCalHeader"></h4>
+        </div>
+        <div class="mini-cal-grid" id="miniCalGrid"></div>
+      </div>
+      <div class="card" style="margin-bottom:0">
+        <div class="cal-nav">
+          <button data-act="calDayPrev" title="Предыдущий день">‹</button>
+          <button data-act="calDayToday">Сегодня</button>
+          <button data-act="calDayNext" title="Следующий день">›</button>
+          <h4 id="miniDayLabel"></h4>
+        </div>
+        <div id="miniEvList" class="list-wrap"></div>
+      </div>
+    </div>
+
     <div class="card">
       <h3>Прогресс дня
         <span class="tag" id="dayProgressLabel"></span>
@@ -225,13 +259,6 @@
         <a class="ic" data-act="tab" data-tab="tasks" style="text-decoration:none" title="К задачам">→</a>
       </h3>
       <div id="todayTasks" class="list-wrap"></div>
-    </div>
-
-    <div class="card">
-      <h3>События в календаре
-        <span class="tag" id="gcalTodayBadge"></span>
-      </h3>
-      <div id="todayEvents" class="list-wrap"></div>
     </div>
   </section>
 
@@ -858,6 +885,8 @@ function renderToday() {
   $('taskLockBadge').textContent = state.lockEnabled ? '🔒 лок вкл' : '';
   $('todayTasks').innerHTML = '<ul class="list">' + tasksHtml(true) + '</ul>';
 
+  // мини-календарь + события выбранного дня (сверху)
+  renderMiniToday();
   // прогресс дня
   const total = habits.length + state.tasks.length;
   const done = hDone + tDone;
@@ -866,20 +895,46 @@ function renderToday() {
   const bar = $('dayProgressBar');
   bar.style.width = pct + '%';
   bar.classList.toggle('full', pct === 100);
+}
 
-  // события сегодня
-  const badge = $('gcalTodayBadge');
-  if (!state.gcal.clientId || !state.gcal.token) {
-    badge.textContent = 'не подключён';
-    $('todayEvents').innerHTML = '<p class="muted">Подключите Google Календарь во вкладке «Календарь».</p>';
-  } else {
-    const map = eventsByDay();
-    const evs = map[tKey] || [];
-    badge.textContent = evs.length ? `${evs.length}` : 'событий нет';
-    $('todayEvents').innerHTML = evs.length
-      ? evs.map(e => `<div class="ev" data-act="openEvent" data-id="${e.id}"><span class="tm">${esc(e.time)}</span>${e.dur ? `<span class="dur">${esc(e.dur)}</span>` : ''}<span class="sum">${esc(e.summary)}</span></div>`).join('')
-      : '<p class="muted">Событий на сегодня нет.</p>';
+function renderMiniToday() {
+  const { y, m } = state.calMonth;
+  $('miniCalHeader').textContent = MONTH_NOM[m] + ' ' + y;
+
+  const map = eventsByDay();
+  const idx = new Date(y, m, 1).getDay();
+  const offset = (idx + 6) % 7;
+  const numDays = new Date(y, m + 1, 0).getDate();
+  const tKey = todayKey();
+  const sel = state.calDay;
+
+  let grid = '';
+  for (let w = 0; w < 7; w++) grid += `<div class="mcal-dow">${DOW_SHORT[(w + 1) % 7]}</div>`;
+  for (let i = 0; i < offset; i++) grid += '<div class="mcal-cell empty"></div>';
+  for (let d = 1; d <= numDays; d++) {
+    const key = `${y}-${pad(m + 1)}-${pad(d)}`;
+    const evs = map[key] || [];
+    const dot = evs.length ? '<span class="mcal-dot"></span>' : '';
+    const cls = ['mcal-cell', key === tKey ? 'today' : '', key === sel ? 'sel' : ''].filter(Boolean).join(' ');
+    grid += `<div class="${cls}" data-act="calDay" data-day="${key}">${d}${dot}</div>`;
   }
+  const rest = (7 - (offset + numDays) % 7) % 7;
+  for (let i = 0; i < rest; i++) grid += '<div class="mcal-cell empty"></div>';
+  $('miniCalGrid').innerHTML = grid;
+
+  // список событий выбранного дня
+  const [dy, dm, dd] = sel.split('-').map(Number);
+  const wd = DOW_FULL[new Date(dy, dm - 1, dd).getDay()];
+  $('miniDayLabel').textContent = wd.charAt(0).toUpperCase() + wd.slice(1) + ', ' + dd + ' ' + MONTH_GEN[dm - 1];
+
+  if (!state.gcal.clientId || !state.gcal.token) {
+    $('miniEvList').innerHTML = '<p class="muted">Подключите Google Календарь во вкладке «Календарь», чтобы видеть события.</p>';
+    return;
+  }
+  const evs = map[sel] || [];
+  $('miniEvList').innerHTML = evs.length
+    ? evs.map(e => `<div class="ev" data-act="openEvent" data-id="${e.id}"><span class="tm">${esc(e.time)}</span>${e.dur ? `<span class="dur">${esc(e.dur)}</span>` : ''}<span class="sum">${esc(e.summary)}</span></div>`).join('')
+    : '<p class="muted">В этот день событий нет.</p>';
 }
 
 function tasksHtml(compact) {
@@ -1090,6 +1145,7 @@ function renderCalendar() {
   }
 
   renderDayPanel();
+  renderMiniToday();
 }
 
 function setCalDay(key) {
@@ -1236,9 +1292,12 @@ document.addEventListener('click', e => {
       break;
     case 'gcalSaveId': gcalSaveClientId(); break;
     case 'gcalChangeId': state.gcal.clientId = ''; state.gcal.token = null; state.gcal.connected = false; saveState(); renderGcalSetup(); break;
-    case 'calPrev': { const c = state.calMonth; state.calMonth = { y: c.m === 0 ? c.y - 1 : c.y, m: c.m === 0 ? 11 : c.m - 1 }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
-    case 'calNext': { const c = state.calMonth; state.calMonth = { y: c.m === 11 ? c.y + 1 : c.y, m: c.m === 11 ? 0 : c.m + 1 }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
-    case 'calToday': { const now2 = new Date(); state.calMonth = { y: now2.getFullYear(), m: now2.getMonth() }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
+    case 'calPrev':
+  case 'miniPrev': { const c = state.calMonth; state.calMonth = { y: c.m === 0 ? c.y - 1 : c.y, m: c.m === 0 ? 11 : c.m - 1 }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
+    case 'calNext':
+    case 'miniNext': { const c = state.calMonth; state.calMonth = { y: c.m === 11 ? c.y + 1 : c.y, m: c.m === 11 ? 0 : c.m + 1 }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
+    case 'calToday':
+    case 'miniToday': { const now2 = new Date(); state.calMonth = { y: now2.getFullYear(), m: now2.getMonth() }; saveState(); renderCalendar(); if (state.gcal.clientId && state.gcal.token) ensureEvents(state.calMonth.y, state.calMonth.m); break; }
     case 'calDay': setCalDay(t.dataset.day); break;
     case 'calDayPrev': shiftDay(-1); break;
     case 'calDayNext': shiftDay(1); break;
