@@ -78,6 +78,9 @@
   ul.list>li:hover{background:rgba(255,255,255,.02);border-radius:10px}
   ul.list input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer;flex:none}
   .task-text{flex:1;font-size:15px;word-break:break-word}
+  .task-text[data-act="editTask"]{cursor:pointer}
+  .task-text[data-act="editTask"]:hover{color:var(--accent2)}
+  .task-edit{flex:1;min-width:0}
   li.done .task-text{text-decoration:line-through;color:var(--muted)}
   li.blocked{opacity:.5}
   li.blocked .task-text{color:var(--muted);cursor:not-allowed}
@@ -563,6 +566,31 @@ function toggleTaskLock(id) {
   if (!t) return;
   t.locked = !t.locked;
   saveState(); renderToday(); renderTasks();
+}
+function editTask(id) {
+  const lst = listOfTask(id);
+  const t = lst && lst.tasks.find(x => x.id === id);
+  const el = document.querySelector(`.task-text[data-id="${id}"]`);
+  if (!t || !el) return;
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.className = 'lname-input task-edit';
+  inp.value = t.text;
+  el.innerHTML = '';
+  el.appendChild(inp);
+  inp.focus(); inp.select();
+  let finished = false;
+  const commit = keep => {
+    if (finished) return;
+    finished = true;
+    if (keep) { const v = inp.value.trim(); if (v) t.text = v; }
+    saveState(); renderToday(); renderTasks();
+  };
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+  });
+  inp.addEventListener('blur', () => commit(true));
 }
 
 /* перетаскивание задач (drag & drop) */
@@ -1230,7 +1258,7 @@ function taskRowHTML(t, compact) {
   return `<li class="task-row ${t.done ? 'done' : ''} ${bl ? 'blocked' : ''}" data-id="${t.id}" ${compact ? '' : 'draggable="true"'}>
     ${compact ? '' : `<span class="grip" title="Перетащите, чтобы переместить">≣</span>`}
     <input type="checkbox" data-act="toggleTask" data-id="${t.id}" ${t.done ? 'checked' : ''} ${bl ? 'disabled' : ''}>
-    <span class="task-text"${bl ? ' title="Залочена: выполните остальные задачи в категории"' : ''}>${esc(t.text)}</span>
+    <span class="task-text" ${compact ? '' : `data-act="editTask" data-id="${t.id}" title="${bl ? 'Залочена: выполните остальные задачи в категории' : 'Клик — изменить задачу'}"`}>${esc(t.text)}</span>
     ${lockInd}
     ${compact ? '' : `<span class="ctrl-row"><button class="ic del" data-act="delTask" data-id="${t.id}" title="Удалить">✕</button></span>`}
   </li>`;
@@ -1652,6 +1680,7 @@ document.addEventListener('click', e => {
     case 'tab': showTab(t.dataset.tab); break;
     case 'delTask': deleteTask(t.dataset.id); break;
     case 'lockTask': toggleTaskLock(t.dataset.id); break;
+    case 'editTask': editTask(t.dataset.id); break;
     case 'delList': deleteList(t.dataset.id); break;
     case 'moveList': moveList(t.dataset.id, Number(t.dataset.dir)); break;
     case 'renameList': renameList(t.dataset.id); break;
