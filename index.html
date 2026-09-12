@@ -94,8 +94,10 @@
   .add-list-top input{flex:1;max-width:340px}
   .lcard{border:1px solid var(--border);border-radius:12px;background:var(--bg2);padding:12px;margin-bottom:12px}
   .lcard-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
-  .lname{font-weight:700;font-size:14px;flex:1;word-break:break-word;cursor:pointer;display:flex;align-items:center;gap:4px}
+  .lname{font-weight:700;font-size:14px;flex:1;min-width:0;word-break:break-word;cursor:pointer;display:flex;align-items:center;gap:8px}
   .lname:hover{color:var(--accent2)}
+  .lpen{opacity:.6;flex:none}
+  .ltext{min-width:0;word-break:break-word}
   .lname-input{font:inherit;font-weight:700;font-size:14px;flex:1;min-width:0;padding:4px 8px;color:var(--text);background:var(--bg);border:1px solid var(--accent);border-radius:8px;outline:none}
   .list-sep{display:flex;align-items:center;gap:10px;margin:10px 0 4px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
   .list-sep::before,.list-sep::after{content:'';flex:1;border-top:1px solid var(--border)}
@@ -295,7 +297,6 @@
         <input type="text" id="listNameInput" placeholder="Новая категория… (Enter)" autocomplete="off">
         <button class="btn btn-ghost" data-act="addListBtn">+ Категория</button>
       </div>
-      <p class="muted" id="taskHint" style="font-size:12px;margin:0 0 14px">Категории идут друг под другом, под чёрточкой каждой — свои задачи. Перетаскивайте строки за ≣, 🔒 залочит задачу, пока не готовы остальные.</p>
       <div id="listStack"></div>
     </div>
   </section>
@@ -521,7 +522,8 @@ function dropTask(targetId, after) {
 /* категории */
 function addList() {
   const inp = $('listNameInput');
-  const name = (inp.value || '').trim() || ('Список ' + (state.lists.length + 1));
+  const name = (inp.value || '').trim();
+  if (!name) { inp.focus(); return; } // имя обязательно — без него список не создаём
   const l = { id: uid(), name, tasks: [] };
   state.lists.push(l);
   state.activeListId = l.id;
@@ -1055,7 +1057,7 @@ function renderTasks() {
     return `
     <div class="lcard">
       <div class="lcard-head">
-        <span class="lname" data-act="renameList" data-id="${l.id}" title="Клик — переименовать">✎&nbsp;${esc(l.name)}</span>
+        <span class="lname" data-act="renameList" data-id="${l.id}" title="Клик — переименовать"><span class="lpen">✎</span><span class="ltext">${esc(l.name)}</span></span>
         <span class="cnt muted">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span>
         <button class="ic del" data-act="delList" data-id="${l.id}" title="Удалить категорию">✕</button>
       </div>
