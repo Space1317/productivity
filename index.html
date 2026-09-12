@@ -83,13 +83,32 @@
   li.blocked .task-text{color:var(--muted);cursor:not-allowed}
   li.blocked input[type=checkbox]{cursor:not-allowed;accent-color:#555}
   .lock{color:var(--warn);font-size:13px;cursor:help;flex:none}
-  .idx{color:var(--muted);font-size:12px;font-weight:700;min-width:20px;text-align:right;flex:none}
   .ic{font:inherit;color:var(--muted);background:transparent;border:none;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:7px;flex:none;transition:.12s}
   .ic:hover{color:var(--text);background:var(--card2)}
   .ic.del:hover{color:var(--bad)}
   .ctrl-row{display:flex;gap:4px;flex:none}
   .toggle-line{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--muted);margin-bottom:12px;cursor:pointer;user-select:none}
   .toggle-line input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer}
+  /* категории задач */
+  .lists-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px}
+  .list-pills{display:flex;flex-wrap:wrap;gap:6px}
+  .pill{font:inherit;font-size:13px;font-weight:600;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:20px;padding:6px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.12s}
+  .pill:hover{color:var(--text)}
+  .pill.active{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 3px 10px rgba(255,122,24,.3)}
+  .pill .cnt{font-size:11px;opacity:.85}
+  .pill .x{color:inherit;opacity:.6;font-size:12px;padding:0 2px;cursor:pointer;border:none;background:none}
+  .pill .x:hover{opacity:1;color:var(--bad)}
+  .list-add{display:flex;gap:6px;align-items:center}
+  .list-add input{width:180px;padding:7px 10px;font-size:13px}
+  /* драг задач */
+  .task-row{cursor:grab}
+  .task-row .grip{color:var(--muted);cursor:grab;font-size:15px;flex:none;user-select:none}
+  .task-row .ic.lock.on{color:var(--warn)}
+  .task-row.dragging{opacity:.4;border:1px dashed var(--accent);border-radius:10px}
+  .task-row.drag-over{border-color:var(--accent)}
+  .list .tl-head{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;padding:10px 8px 2px;border-bottom:none}
+  .tl-head:first-child{padding-top:2px}
+  .tl-head .cnt{text-transform:none;letter-spacing:0}
   /* habits */
   .habit-strip{display:flex;gap:6px;margin-top:8px;margin-bottom:8px}
   .habit-strip button{
@@ -265,19 +284,22 @@
   <!-- ============ ЗАДАЧИ ============ -->
   <section id="tab-tasks" class="tab">
     <h2 class="page-title">Задачи</h2>
-    <p class="sub">Добавляйте задачи, отмечайте выполненные. Включите лок — тогда задача откроется только после предыдущих.</p>
+    <p class="sub">Задачи по категориям: перетаскивайте их для сортировки, а 🔒 залочит задачу — выполнить её можно, только когда отмечены все остальные в категории.</p>
 
     <div class="card">
+      <div class="lists-bar">
+        <div class="list-pills" id="listPills"></div>
+        <div class="list-add">
+          <input type="text" id="listNameInput" placeholder="Новая категория (Enter)" autocomplete="off">
+          <button class="btn btn-ghost" data-act="addListBtn">+ Категория</button>
+        </div>
+      </div>
       <div class="add-row">
         <input type="text" id="taskInput" placeholder="Новая задача…" autocomplete="off">
         <button class="btn" data-act="addTaskBtn">Добавить</button>
       </div>
-      <label class="toggle-line">
-        <input type="checkbox" id="lockToggle" data-act="lockToggle">
-        🔒 Лок: не отмечать задачу, пока не выполнены предыдущие (простое и последовательность)
-      </label>
       <ul class="list" id="taskList"></ul>
-      <p class="muted" id="taskEmpty" style="display:none;font-size:13px;padding:8px 4px">Задач пока нет.</p>
+      <p class="muted" id="taskHint" style="font-size:12px;margin-top:10px">Перетащите строку за ≣, чтобы поменять порядок. Лок 🔒: задача станет доступна для отметки, когда все остальные в категории выполнены.</p>
     </div>
   </section>
 
@@ -378,15 +400,17 @@ function defaults() {
       { id: uid(), name: 'Тренировка', createdAt: t, done: {} },
       { id: uid(), name: 'Читать 20 минут', createdAt: t, done: {} }
     ],
-    tasks: [
-      { id: uid(), text: 'Оплатить счета', done: false, createdAt: t },
-      { id: uid(), text: 'Подготовить отчёт', done: false, createdAt: t },
-      { id: uid(), text: 'Позвонить маме', done: false, createdAt: t }
+    lists: [
+      { id: uid(), name: 'Список 1', tasks: [
+        { id: uid(), text: 'Оплатить счета', done: false, locked: false, createdAt: t },
+        { id: uid(), text: 'Подготовить отчёт', done: false, locked: false, createdAt: t },
+        { id: uid(), text: 'Позвонить маме', done: false, locked: false, createdAt: t }
+      ] }
     ],
+    activeListId: '',
     notes: [
       { id: uid(), text: 'Добро пожаловать в планер! Это заметки — кликните сюда и пишите что угодно. Всё сохраняется автоматически.', updatedAt: Date.now() }
     ],
-    lockEnabled: false,
     gcal: { clientId: '', token: null, tokenExpiry: 0, connected: false },
     calMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
     calDay: todayKey()
@@ -399,7 +423,8 @@ function loadState() {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
-    if (!s || typeof s !== 'object' || !Array.isArray(s.habits) || !Array.isArray(s.tasks) || !Array.isArray(s.notes)) return null;
+    if (!s || typeof s !== 'object' || !Array.isArray(s.habits) || !Array.isArray(s.notes)) return null;
+    if (!Array.isArray(s.tasks) && !Array.isArray(s.lists)) return null;
     return s;
   } catch (e) { return null; }
 }
@@ -410,6 +435,17 @@ let saveT;
 function scheduleSave() { clearTimeout(saveT); saveT = setTimeout(saveState, 400); }
 
 state = loadState() || defaults();
+if (!Array.isArray(state.lists)) {
+  const old = Array.isArray(state.tasks) ? state.tasks : [];
+  old.forEach(t => { if (typeof t.locked === 'undefined') t.locked = false; });
+  state.lists = [{ id: uid(), name: 'Список 1', tasks: old }];
+}
+state.lists.forEach(l => {
+  if (!Array.isArray(l.tasks)) l.tasks = [];
+  l.tasks.forEach(t => { if (typeof t.locked === 'undefined') t.locked = false; });
+});
+if (!state.activeListId || !state.lists.find(l => l.id === state.activeListId)) state.activeListId = state.lists[0].id;
+delete state.tasks;
 if (state.gcal == null) state.gcal = { clientId: '', token: null, tokenExpiry: 0, connected: false };
 if (!state.calMonth) state.calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
 if (!state.calDay) state.calDay = todayKey();
@@ -426,37 +462,84 @@ function toggleHabit(id, key) {
 }
 
 /* ================= логика задач ================= */
-function isBlocked(i) {
-  if (!state.lockEnabled) return false;
-  for (let j = 0; j < i; j++) if (!state.tasks[j].done) return true;
-  return false;
+function activeList() {
+  return state.lists.find(l => l.id === state.activeListId) || state.lists[0];
+}
+function listOfTask(id) {
+  for (const l of state.lists) if (l.tasks.some(x => x.id === id)) return l;
+  return null;
+}
+// Задача заблокирована, если она залочена, ещё не выполнена и есть невыполненные другие задачи
+function taskBlocked(t, lst) {
+  if (!t || !t.locked || t.done) return false;
+  lst = lst || listOfTask(t.id);
+  return lst.tasks.some(x => x.id !== t.id && !x.done);
 }
 function addTask() {
   const inp = $('taskInput');
   const text = inp.value.trim();
   if (!text) { inp.focus(); return; }
-  state.tasks.push({ id: uid(), text, done: false, createdAt: todayKey() });
+  activeList().tasks.push({ id: uid(), text, done: false, locked: false, createdAt: todayKey() });
   inp.value = ''; saveState(); renderToday(); renderTasks(); inp.focus();
 }
 function deleteTask(id) {
-  state.tasks = state.tasks.filter(t => t.id !== id);
+  const lst = listOfTask(id);
+  if (!lst) return;
+  lst.tasks = lst.tasks.filter(x => x.id !== id);
   saveState(); renderToday(); renderTasks();
 }
 function toggleTask(id) {
-  const t = state.tasks.find(x => x.id === id);
+  const lst = listOfTask(id);
+  const t = lst && lst.tasks.find(x => x.id === id);
   if (!t) return;
-  const i = state.tasks.indexOf(t);
-  if (isBlocked(i)) return; // заблокировано
+  if (!t.done && t.locked && lst.tasks.some(x => x.id !== t.id && !x.done)) return; // залочена
   t.done = !t.done;
   saveState(); renderToday(); renderTasks();
 }
-function moveTask(id, dir) {
-  const i = state.tasks.findIndex(x => x.id === id);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= state.tasks.length) return;
-  const [t] = state.tasks.splice(i, 1);
-  state.tasks.splice(j, 0, t);
+function toggleTaskLock(id) {
+  const lst = listOfTask(id);
+  const t = lst && lst.tasks.find(x => x.id === id);
+  if (!t) return;
+  t.locked = !t.locked;
   saveState(); renderToday(); renderTasks();
+}
+
+/* перетаскивание задач (drag & drop) */
+var dragTaskId = null;
+function dropTask(targetId, after) {
+  const lst = activeList();
+  if (!lst) return;
+  const from = lst.tasks.findIndex(t => t.id === dragTaskId);
+  if (from < 0) return;
+  const [moved] = lst.tasks.splice(from, 1);
+  let at = lst.tasks.findIndex(t => t.id === targetId);
+  if (at < 0) at = lst.tasks.length;
+  if (after) at += 1;
+  lst.tasks.splice(at, 0, moved);
+  saveState(); renderToday(); renderTasks();
+}
+
+/* категории */
+function addList() {
+  const inp = $('listNameInput');
+  const name = (inp.value || '').trim() || ('Список ' + (state.lists.length + 1));
+  const l = { id: uid(), name, tasks: [] };
+  state.lists.push(l);
+  state.activeListId = l.id;
+  inp.value = '';
+  saveState(); renderToday(); renderTasks();
+}
+function deleteList(id) {
+  if (state.lists.length <= 1) { alert('Нельзя удалить последнюю категорию.'); return; }
+  const l = state.lists.find(x => x.id === id);
+  if (!l) return;
+  if (l.tasks.length && !confirm(`Удалить категорию «${l.name}» вместе с ${l.tasks.length} задачами?`)) return;
+  state.lists = state.lists.filter(x => x.id !== id);
+  if (state.activeListId === id) state.activeListId = state.lists[0].id;
+  saveState(); renderToday(); renderTasks();
+}
+function setList(id) {
+  if (state.lists.some(l => l.id === id)) { state.activeListId = id; saveState(); renderTasks(); }
 }
 
 /* ================= логика заметок ================= */
@@ -879,16 +962,22 @@ function renderToday() {
   }
   $('todayHabits').innerHTML = '<ul class="list">' + habitHtml + '</ul>';
 
-  // задачи
-  const tDone = state.tasks.filter(t => t.done).length;
-  $('taskCountLabel').textContent = state.tasks.length ? `${tDone} из ${state.tasks.length}` : '';
-  $('taskLockBadge').textContent = state.lockEnabled ? '🔒 лок вкл' : '';
-  $('todayTasks').innerHTML = '<ul class="list">' + tasksHtml(true) + '</ul>';
+  // задачи (по категориям)
+  const allTasks = state.lists.reduce((a, l) => a.concat(l.tasks), []);
+  const tDone = allTasks.filter(t => t.done).length;
+  $('taskCountLabel').textContent = allTasks.length ? `${tDone} из ${allTasks.length}` : '';
+  $('taskLockBadge').textContent = state.lists.some(l => l.tasks.some(t => t.locked)) ? '🔒 лок' : '';
+  let groups = '';
+  state.lists.forEach(l => {
+    groups += `<li class="tl-head">${esc(l.name)} <span class="cnt muted">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span></li>`;
+    groups += tasksHtml(l, true);
+  });
+  $('todayTasks').innerHTML = '<ul class="list">' + (groups || '<li class="muted">Задач пока нет.</li>') + '</ul>';
 
-  // мини-календарь + события выбранного дня (сверху)
+// мини-календарь + события выбранного дня (сверху)
   renderMiniToday();
   // прогресс дня
-  const total = habits.length + state.tasks.length;
+  const total = habits.length + allTasks.length;
   const done = hDone + tDone;
   const pct = total ? Math.round(done / total * 100) : 0;
   $('dayProgressLabel').textContent = total ? `${done} из ${total}` : 'нет задач и привычек';
@@ -937,33 +1026,34 @@ function renderMiniToday() {
     : '<p class="muted">В этот день событий нет.</p>';
 }
 
-function tasksHtml(compact) {
-  if (!state.tasks.length) return '<li class="muted">Задач пока нет.</li>';
-  return state.tasks.map((t, i) => {
-    const bl = isBlocked(i);
-    const lockIcon = (bl && !t.done) ? `<span class="lock" title="Сначала выполните предыдущие задачи">🔒</span>` : '';
-    const ctrl = compact ? '' : `
-      <span class="ctrl-row">
-        <button class="ic" data-act="moveTask" data-id="${t.id}" data-dir="-1" title="Выше">↑</button>
-        <button class="ic" data-act="moveTask" data-id="${t.id}" data-dir="1" title="Ниже">↓</button>
-        <button class="ic del" data-act="delTask" data-id="${t.id}" title="Удалить">✕</button>
-      </span>`;
-    const lockAttr = bl && !t.done ? 'disabled' : '';
-    const lockTitle = bl && !t.done ? ' title="Заблокирована: выполните предыдущие"' : '';
-    return `<li class="${t.done ? 'done' : ''} ${bl && !t.done ? 'blocked' : ''}">
-      <span class="idx">${i + 1}</span>
-      <input type="checkbox" data-act="toggleTask" data-id="${t.id}" ${t.done ? 'checked' : ''} ${lockAttr}>
-      <span class="task-text"${lockTitle}>${esc(t.text)}</span>
-      ${lockIcon}${ctrl}
+function tasksHtml(lst, compact) {
+  if (!lst || !lst.tasks.length) return '<li class="muted">Задач пока нет.</li>';
+  return lst.tasks.map(t => {
+    const bl = taskBlocked(t, lst);
+    const lockInd = t.locked
+      ? (compact
+        ? `<span class="lock" title="${bl ? 'Залочена: ждёт выполнения остальных задач' : 'Залочена вручную'}">${bl ? '⏳' : '🔒'}</span>`
+        : `<button class="ic lock${t.locked ? ' on' : ''}" data-act="lockTask" data-id="${t.id}"
+            title="${t.locked ? 'Лок активен — нажмите, чтобы снять' : 'Залочить: можно выполнить, только когда отмечены все остальные в категории'}">${t.locked ? '🔓' : '🔒'}</button>`)
+      : '';
+    return `<li class="task-row ${t.done ? 'done' : ''} ${bl ? 'blocked' : ''}" data-id="${t.id}" ${compact ? '' : 'draggable="true"'}>
+      ${compact ? '' : `<span class="grip" title="Перетащите, чтобы переместить">≣</span>`}
+      <input type="checkbox" data-act="toggleTask" data-id="${t.id}" ${t.done ? 'checked' : ''} ${bl ? 'disabled' : ''}>
+      <span class="task-text"${bl ? ' title="Залочена: выполните остальные задачи в категории"' : ''}>${esc(t.text)}</span>
+      ${lockInd}
+      ${compact ? '' : `<span class="ctrl-row"><button class="ic del" data-act="delTask" data-id="${t.id}" title="Удалить">✕</button></span>`}
     </li>`;
   }).join('');
 }
 
 function renderTasks() {
-  $('taskList').innerHTML = tasksHtml(false);
-  $('taskEmpty').style.display = state.tasks.length ? 'none' : 'block';
-  $('lockToggle').checked = !!state.lockEnabled;
-  $('taskLockBadge').textContent = state.lockEnabled ? '🔒 лок вкл' : '';
+  const pills = state.lists.map(l => `
+    <button class="pill ${l.id === state.activeListId ? 'active' : ''}" data-act="setList" data-id="${l.id}">
+      ${esc(l.name)} <span class="cnt">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span>
+      <span class="x" data-act="delList" data-id="${l.id}" title="Удалить категорию">✕</span>
+    </button>`).join('');
+  $('listPills').innerHTML = pills;
+  $('taskList').innerHTML = tasksHtml(activeList(), false);
 }
 
 function renderHabits() {
@@ -1274,7 +1364,10 @@ document.addEventListener('click', e => {
   switch (act) {
     case 'tab': showTab(t.dataset.tab); break;
     case 'delTask': deleteTask(t.dataset.id); break;
-    case 'moveTask': moveTask(t.dataset.id, Number(t.dataset.dir)); break;
+    case 'lockTask': toggleTaskLock(t.dataset.id); break;
+    case 'setList': setList(t.dataset.id); break;
+    case 'delList': deleteList(t.dataset.id); break;
+    case 'addListBtn': addList(); break;
     case 'delHabit': state.habits = state.habits.filter(h => h.id !== t.dataset.id); saveState(); renderToday(); renderHabits(); break;
     case 'addTaskBtn': addTask(); break;
     case 'addHabitBtn': addHabit(); break;
@@ -1313,7 +1406,6 @@ document.addEventListener('change', e => {
   const act = t.dataset.act;
   if (act === 'toggleTask') toggleTask(t.dataset.id);
   else if (act === 'toggleHabit') toggleHabit(t.dataset.id, t.dataset.day);
-  else if (act === 'lockToggle') { state.lockEnabled = t.checked; saveState(); renderToday(); renderTasks(); }
   else if (act === 'evAllDay') {
     const f = $('evFrom'), to = $('evTo');
     if (f && to) { f.disabled = t.checked; to.disabled = t.checked; }
@@ -1325,7 +1417,41 @@ document.addEventListener('change', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'taskInput') addTask();
   if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'habitInput') addHabit();
+  if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'listNameInput') addList();
   if (e.key === 'Escape') closeEvModal();
+});
+
+/* drag & drop задач */
+document.addEventListener('dragstart', e => {
+  const row = e.target.closest('.task-row[draggable="true"]');
+  if (!row) return;
+  dragTaskId = row.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', row.dataset.id);
+  row.classList.add('dragging');
+});
+document.addEventListener('dragover', e => {
+  const row = e.target.closest('.task-row');
+  if (!row || !dragTaskId || row.dataset.id === dragTaskId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const rect = row.getBoundingClientRect();
+  row.classList.add('drag-over');
+  row.dataset.dropAfter = e.clientY > rect.top + rect.height / 2 ? '1' : '0';
+});
+document.addEventListener('dragleave', e => {
+  const row = e.target.closest('.task-row');
+  if (row) row.classList.remove('drag-over');
+});
+document.addEventListener('drop', e => {
+  const row = e.target.closest('.task-row');
+  if (!row || !dragTaskId) return;
+  e.preventDefault();
+  dropTask(row.dataset.id, row.dataset.dropAfter === '1');
+});
+document.addEventListener('dragend', () => {
+  document.querySelectorAll('.task-row.dragging, .task-row.drag-over').forEach(r => r.classList.remove('dragging', 'drag-over'));
+  dragTaskId = null;
 });
 
 /* заметки: сохранение при вводе */
