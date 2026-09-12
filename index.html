@@ -93,6 +93,7 @@
   .add-list-top{display:flex;gap:10px;margin-bottom:10px}
   .add-list-top input{flex:1;max-width:340px}
   .lcard{border:1px solid var(--border);border-radius:12px;background:var(--bg2);padding:12px;margin-bottom:12px}
+  .lcard.drop-zone{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
   .lcard-head{display:flex;align-items:center;gap:8px;margin-bottom:2px}
   .lname{font-weight:700;font-size:14px;flex:1;min-width:0;word-break:break-word;cursor:pointer;display:flex;align-items:center;gap:8px}
   .lname:hover{color:var(--accent2)}
@@ -506,18 +507,6 @@ function toggleTaskLock(id) {
 
 /* перетаскивание задач (drag & drop) */
 var dragTaskId = null;
-function dropTask(targetId, after) {
-  const lst = listOfTask(dragTaskId);
-  if (!lst) return;
-  const from = lst.tasks.findIndex(t => t.id === dragTaskId);
-  if (from < 0) return;
-  const [moved] = lst.tasks.splice(from, 1);
-  let at = lst.tasks.findIndex(t => t.id === targetId);
-  if (at < 0) at = lst.tasks.length;
-  if (after) at += 1;
-  lst.tasks.splice(at, 0, moved);
-  saveState(); renderToday(); renderTasks();
-}
 
 /* категории */
 function addList() {
@@ -960,17 +949,15 @@ function renderToday() {
   }
   $('todayHabits').innerHTML = '<ul class="list">' + habitHtml + '</ul>';
 
-  // задачи (по категориям)
-  const allTasks = state.lists.reduce((a, l) => a.concat(l.tasks), []);
+  // задачи (главная — только первая категория)
+  const mainList = state.lists[0];
+  const allTasks = mainList ? mainList.tasks : [];
   const tDone = allTasks.filter(t => t.done).length;
-  $('taskCountLabel').textContent = allTasks.length ? `${tDone} из ${allTasks.length}` : '';
-  $('taskLockBadge').textContent = state.lists.some(l => l.tasks.some(t => t.locked)) ? '🔒 лок' : '';
-  let groups = '';
-  state.lists.forEach(l => {
-    groups += `<li class="tl-head">${esc(l.name)} <span class="cnt muted">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span></li>`;
-    groups += tasksHtml(l, true);
-  });
-  $('todayTasks').innerHTML = '<ul class="list">' + (groups || '<li class="muted">Задач пока нет.</li>') + '</ul>';
+  $('taskCountLabel').textContent = allTasks.length
+    ? `«${mainList ? mainList.name : ''}» — ${tDone} из ${allTasks.length}`
+    : '';
+  $('taskLockBadge').textContent = mainList && mainList.tasks.some(t => t.locked) ? '🔒 лок' : '';
+  $('todayTasks').innerHTML = '<ul class="list">' + (allTasks.length ? tasksHtml(mainList, true) : '<li class="muted">Задач в этом списке нет.</li>') + '</ul>';
 
 // мини-календарь + события выбранного дня (сверху)
   renderMiniToday();
@@ -1052,10 +1039,10 @@ function renderTasks() {
       ? `<ul class="list">${norm.map(t => taskRowHTML(t, false)).join('')}</ul>`
       : (l.tasks.length ? '' : '<p class="muted" style="font-size:13px;padding:6px 4px">В категории пока нет задач.</p>');
     const lockHtml = lockd.length
-      ? `<div class="list-sep"><span>🔒 Залоченные</span></div><ul class="list">${lockd.map(t => taskRowHTML(t, false)).join('')}</ul>`
+      ? `<div class="list-sep"><span>🔒 Залоченные</span></div><div class="lockzone"><ul class="list">${lockd.map(t => taskRowHTML(t, false)).join('')}</ul></div>`
       : '';
     return `
-    <div class="lcard">
+    <div class="lcard" data-list-id="${l.id}">
       <div class="lcard-head">
         <span class="lname" data-act="renameList" data-id="${l.id}" title="Клик — переименовать"><span class="lpen">✎</span><span class="ltext">${esc(l.name)}</span></span>
         <span class="cnt muted">${l.tasks.filter(t => t.done).length}/${l.tasks.length}</span>
@@ -1463,7 +1450,14 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeEvModal();
 });
 
-/* drag & drop задач */
+/* drag & drop задач: внутри списка и между списками */
+function listOfEl(el) {
+  const card = el.closest('.lcard');
+  return card ? state.lists.find(l => l.id === card.dataset.listId) : null;
+}
+function clearDragUI() {
+  document.querySelectorAll('.task-row.dragging, .task-row.drag-over, .lcard.drop-zone').forEach(r => r.classList.remove('dragging', 'drag-over', 'drop-zone'));
+}
 document.addEventListener('dragstart', e => {
   const row = e.target.closest('.task-row[draggable="true"]');
   if (!row) return;
@@ -1473,28 +1467,53 @@ document.addEventListener('dragstart', e => {
   row.classList.add('dragging');
 });
 document.addEventListener('dragover', e => {
+  if (!dragTaskId) return;
   const row = e.target.closest('.task-row');
-  if (!row || !dragTaskId || row.dataset.id === dragTaskId) return;
-  const la = listOfTask(dragTaskId), lb = listOfTask(row.dataset.id);
-  if (!la || la !== lb) return; // перетаскивание только внутри своей категории
+  const card = e.target.closest('.lcard');
+  if (!row && !card) return;
+  const src = listOfTask(dragTaskId);
+  const to = listOfEl(row || card);
+  if (!src || !to) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
-  const rect = row.getBoundingClientRect();
-  row.classList.add('drag-over');
-  row.dataset.dropAfter = e.clientY > rect.top + rect.height / 2 ? '1' : '0';
+  clearDragUI();
+  to.classList.add('drop-zone');
+  if (row && row.dataset.id !== dragTaskId) {
+    row.classList.add('drag-over');
+    const rect = row.getBoundingClientRect();
+    row.dataset.dropAfter = e.clientY > rect.top + rect.height / 2 ? '1' : '0';
+  }
 });
 document.addEventListener('dragleave', e => {
   const row = e.target.closest('.task-row');
   if (row) row.classList.remove('drag-over');
 });
 document.addEventListener('drop', e => {
+  if (!dragTaskId) return;
   const row = e.target.closest('.task-row');
-  if (!row || !dragTaskId) return;
+  const card = e.target.closest('.lcard');
+  if (!row && !card) return;
   e.preventDefault();
-  dropTask(row.dataset.id, row.dataset.dropAfter === '1');
+  const src = listOfTask(dragTaskId);
+  const to = listOfEl(row || card);
+  if (!src || !to) return;
+  const moved = src.tasks.find(t => t.id === dragTaskId);
+  if (!moved) return;
+  if (row && row.dataset.id === dragTaskId) return; // уронили на себя
+  src.tasks = src.tasks.filter(t => t.id !== dragTaskId);
+  if (row) {
+    if (row.closest('.lockzone')) moved.locked = true; // в «Залоченные» — автоматически лочим
+    let at = to.tasks.findIndex(t => t.id === row.dataset.id);
+    if (at < 0) at = to.tasks.length;
+    if (row.dataset.dropAfter === '1') at += 1;
+    to.tasks.splice(at, 0, moved);
+  } else {
+    to.tasks.push(moved);
+  }
+  saveState(); renderToday(); renderTasks();
 });
 document.addEventListener('dragend', () => {
-  document.querySelectorAll('.task-row.dragging, .task-row.drag-over').forEach(r => r.classList.remove('dragging', 'drag-over'));
+  clearDragUI();
   dragTaskId = null;
 });
 
