@@ -238,6 +238,28 @@
   .mcal-cell.sel .mcal-dot{background:#fff}
   #miniEvList{display:flex;flex-direction:column;gap:8px}
   #miniEvList .ev{margin-bottom:0}
+  /* финансы */
+  .add-row select{font:inherit;color:var(--text);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:9px 12px;outline:none;cursor:pointer}
+  .fin-bal{font-size:30px;font-weight:800;letter-spacing:.5px}
+  .fin-bal.pos{color:var(--good)}
+  .fin-bal.neg{color:var(--bad)}
+  .stack{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+  .fin-row{display:flex;align-items:center;gap:10px;padding:7px 9px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;font-size:13px}
+  .fin-date{flex:none;font-size:12px;font-variant-numeric:tabular-nums}
+  .fin-comment{flex:1;min-width:0;word-break:break-word}
+  .fin-amt{flex:none;font-weight:700;font-variant-numeric:tabular-nums}
+  .fin-amt.pos,.pos{color:var(--good)}
+  .fin-amt.neg,.neg{color:var(--bad)}
+  .fin-row.paid{opacity:.5}
+  .fin-row.paid .fin-comment{text-decoration:line-through}
+  .fin-row.soon{border-color:var(--warn)}
+  .st-row{display:flex;align-items:center;gap:10px;padding:7px 9px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;font-size:13px}
+  .st-name{flex:1;min-width:0;font-weight:600;word-break:break-word}
+  .st-cur{cursor:pointer;border-bottom:1px dashed var(--muted);padding:0 2px;white-space:nowrap}
+  .st-cur:hover{color:var(--accent2)}
+  .st-cur-input{width:90px;padding:3px 6px;font-weight:400}
+  .st-summary{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:13px}
+  .tag.warn{color:var(--warn);border-color:rgba(210,153,34,.4)}
   @media (max-width:860px){.today-cal-row{grid-template-columns:1fr}}
   details.howto{margin-top:10px;font-size:13px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
   details.howto summary{cursor:pointer;font-weight:600;color:var(--text)}
@@ -262,6 +284,7 @@
       <button data-act="tab" data-tab="habits">Привычки</button>
       <button data-act="tab" data-tab="calendar">Календарь</button>
       <button data-act="tab" data-tab="notes">Заметки</button>
+      <button data-act="tab" data-tab="finance">Финансы</button>
     </nav>
   </div>
 </header>
@@ -399,6 +422,62 @@
     </div>
   </section>
 
+  <!-- ============ ФИНАНСЫ ============ -->
+  <section id="tab-finance" class="tab">
+    <h2 class="page-title">Финансы</h2>
+    <p class="sub">Накопления, акции, ежемесячные и предстоящие разовые траты.</p>
+
+    <div class="card">
+      <h3>💸 Накопления <span class="tag" id="finEntriesCount"></span></h3>
+      <div id="finBalance"></div>
+      <div class="add-row" style="margin-top:10px">
+        <select id="finType">
+          <option value="1">+ доход</option>
+          <option value="-1">− расход</option>
+        </select>
+        <input type="number" id="finAmount" placeholder="Сумма" min="0" step="any" style="width:120px">
+        <input type="text" id="finComment" placeholder="Комментарий" autocomplete="off" style="flex:1">
+        <button class="btn" data-act="finAddEntry">Добавить</button>
+      </div>
+      <div id="finEntries" class="stack"></div>
+    </div>
+
+    <div class="card">
+      <h3>📈 Акции</h3>
+      <div id="finStocksHead"></div>
+      <div class="add-row">
+        <input type="text" id="stName" placeholder="Название / тикер" autocomplete="off" style="flex:1">
+        <input type="number" id="stCount" placeholder="Кол-во" min="0" step="any" style="width:90px">
+        <input type="number" id="stBuy" placeholder="Цена покупки" min="0" step="any" style="width:120px">
+        <input type="number" id="stCur" placeholder="Тек. цена" min="0" step="any" style="width:110px">
+        <button class="btn" data-act="finAddStock">Добавить</button>
+      </div>
+      <div id="finStocks" class="stack"></div>
+    </div>
+
+    <div class="card">
+      <h3>🗓 Ежемесячные траты <span class="tag" id="finMonthlyTotal"></span></h3>
+      <div class="add-row">
+        <input type="text" id="mtName" placeholder="Что за трата" autocomplete="off" style="flex:1">
+        <input type="number" id="mtAmount" placeholder="Сумма" min="0" step="any" style="width:120px">
+        <input type="number" id="mtDay" placeholder="День (число)" min="1" max="31" style="width:110px">
+        <button class="btn" data-act="finAddMonthly">Добавить</button>
+      </div>
+      <div id="finMonthly" class="stack"></div>
+    </div>
+
+    <div class="card">
+      <h3>⏳ Предстоящие разовые траты</h3>
+      <div class="add-row">
+        <input type="text" id="upName" placeholder="Что за трата" autocomplete="off" style="flex:1">
+        <input type="number" id="upAmount" placeholder="Сумма" min="0" step="any" style="width:120px">
+        <input type="date" id="upDate">
+        <button class="btn" data-act="finAddUpcoming">Добавить</button>
+      </div>
+      <div id="finUpcoming" class="stack"></div>
+    </div>
+  </section>
+
 </main>
 
 <div class="modal-ov" id="evModal" style="display:none">
@@ -464,6 +543,7 @@ function defaults() {
     ],
     habitMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
     timer: { label: '', durationMs: 0, endAt: 0 },
+    finance: { balanceEntries: [], stocks: [], monthly: [], upcoming: [] },
     gcal: { clientId: '', token: null, tokenExpiry: 0, connected: false },
     calMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
     calDay: todayKey()
@@ -508,6 +588,11 @@ state.noteLists.forEach(l => { if (!Array.isArray(l.notes)) l.notes = []; });
 delete state.notes;
 if (!state.habitMonth || typeof state.habitMonth.y === 'undefined') state.habitMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
 if (!state.timer || typeof state.timer.endAt === 'undefined') state.timer = { label: '', durationMs: 0, endAt: 0 };
+if (!state.finance || typeof state.finance !== 'object') state.finance = { balanceEntries: [], stocks: [], monthly: [], upcoming: [] };
+if (!Array.isArray(state.finance.balanceEntries)) state.finance.balanceEntries = [];
+if (!Array.isArray(state.finance.stocks)) state.finance.stocks = [];
+if (!Array.isArray(state.finance.monthly)) state.finance.monthly = [];
+if (!Array.isArray(state.finance.upcoming)) state.finance.upcoming = [];
 if (state.gcal == null) state.gcal = { clientId: '', token: null, tokenExpiry: 0, connected: false };
 if (!state.calMonth) state.calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
 if (!state.calDay) state.calDay = todayKey();
@@ -1071,7 +1156,7 @@ async function refreshAllGcal() {
 
 /* ================= рендеры ================= */
 function renderAll() {
-  renderToday(); renderTasks(); renderHabits(); renderNotes();
+  renderToday(); renderTasks(); renderHabits(); renderNotes(); renderFinance();
   renderGcalSetup(); renderCalendar();
 }
 
@@ -1448,6 +1533,159 @@ function renderNotes() {
   $('notesStack').innerHTML = stack;
 }
 
+/* ================= ФИНАНСЫ ================= */
+function fmtMoney(n) {
+  return Math.round(n).toLocaleString('ru-RU') + ' ₽';
+}
+function finBalance() {
+  return state.finance.balanceEntries.reduce((s, e) => s + e.amount, 0);
+}
+function datePlus(days) {
+  const d = new Date(); d.setDate(d.getDate() + days); return fmtDay(d);
+}
+function addFinEntry() {
+  const type = $('finType').value;
+  const amt = parseFloat($('finAmount').value);
+  if (!amt || isNaN(amt) || amt <= 0) { $('finAmount').focus(); return; }
+  const comment = $('finComment').value.trim();
+  state.finance.balanceEntries.push({ id: uid(), date: todayKey(), amount: (type === '-1' ? -1 : 1) * amt, comment });
+  $('finAmount').value = ''; $('finComment').value = '';
+  saveState(); renderFinance();
+}
+function delFinEntry(id) {
+  state.finance.balanceEntries = state.finance.balanceEntries.filter(e => e.id !== id);
+  saveState(); renderFinance();
+}
+function addFinStock() {
+  const name = $('stName').value.trim();
+  const count = parseFloat($('stCount').value);
+  const buy = parseFloat($('stBuy').value);
+  if (!name || !count || isNaN(buy)) { $('stName').focus(); return; }
+  const cur = parseFloat($('stCur').value);
+  state.finance.stocks.push({ id: uid(), name, count, buy, cur: isNaN(cur) ? buy : cur });
+  $('stName').value = ''; $('stCount').value = ''; $('stBuy').value = ''; $('stCur').value = '';
+  saveState(); renderFinance();
+}
+function delFinStock(id) {
+  state.finance.stocks = state.finance.stocks.filter(s => s.id !== id);
+  saveState(); renderFinance();
+}
+function editFinStockCur(id) {
+  const s = state.finance.stocks.find(x => x.id === id);
+  const el = document.querySelector(`.st-cur[data-id="${id}"]`);
+  if (!s || !el) return;
+  const inp = document.createElement('input');
+  inp.type = 'number'; inp.className = 'lname-input st-cur-input'; inp.value = s.cur; inp.min = '0'; inp.step = 'any';
+  el.innerHTML = ''; el.appendChild(inp);
+  inp.focus(); inp.select();
+  let finished = false;
+  const commit = keep => {
+    if (finished) return; finished = true;
+    if (keep) { const v = parseFloat(inp.value); if (!isNaN(v) && v >= 0) s.cur = v; }
+    saveState(); renderFinance();
+  };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit(true); } else if (e.key === 'Escape') { e.preventDefault(); commit(false); } });
+  inp.addEventListener('blur', () => commit(true));
+}
+function addFinMonthly() {
+  const name = $('mtName').value.trim();
+  const amt = parseFloat($('mtAmount').value);
+  const day = Math.floor(parseFloat($('mtDay').value));
+  if (!name || !amt || isNaN(amt) || isNaN(day) || day < 1 || day > 31) { $('mtName').focus(); return; }
+  state.finance.monthly.push({ id: uid(), name, amount: amt, day });
+  $('mtName').value = ''; $('mtAmount').value = ''; $('mtDay').value = '';
+  saveState(); renderFinance();
+}
+function delFinMonthly(id) {
+  state.finance.monthly = state.finance.monthly.filter(x => x.id !== id);
+  saveState(); renderFinance();
+}
+function addFinUpcoming() {
+  const name = $('upName').value.trim();
+  const amt = parseFloat($('upAmount').value);
+  const date = $('upDate').value;
+  if (!name || !amt || isNaN(amt) || !date) { $('upName').focus(); return; }
+  state.finance.upcoming.push({ id: uid(), name, amount: amt, date, paid: false });
+  $('upName').value = ''; $('upAmount').value = ''; $('upDate').value = '';
+  saveState(); renderFinance();
+}
+function delFinUpcoming(id) {
+  state.finance.upcoming = state.finance.upcoming.filter(x => x.id !== id);
+  saveState(); renderFinance();
+}
+function toggleFinPaid(id) {
+  const x = state.finance.upcoming.find(t => t.id === id);
+  if (!x) return;
+  x.paid = !x.paid;
+  saveState(); renderFinance();
+}
+
+function renderFinance() {
+  const f = state.finance;
+
+  // накопления
+  const bal = finBalance();
+  $('finEntriesCount').textContent = f.balanceEntries.length ? f.balanceEntries.length + ' зап.' : '';
+  $('finBalance').innerHTML = `<div class="fin-bal ${bal >= 0 ? 'pos' : 'neg'}">${fmtMoney(bal)}</div>
+    <div class="muted" style="font-size:12px;margin-top:2px">Доходы «+», расходы «−» — итог считается автоматически.</div>`;
+  $('finEntries').innerHTML = f.balanceEntries.slice().reverse().map(e => `
+    <div class="fin-row">
+      <span class="muted fin-date">${e.date}</span>
+      <span class="fin-comment">${esc(e.comment || '')}</span>
+      <span class="fin-amt ${e.amount >= 0 ? 'pos' : 'neg'}">${e.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(e.amount))}</span>
+      <button class="ic del" data-act="finDelEntry" data-id="${e.id}" title="Удалить">✕</button>
+    </div>`).join('') || '<p class="muted" style="font-size:13px">Записей пока нет.</p>';
+
+  // акции
+  const invest = f.stocks.reduce((s, x) => s + x.buy * x.count, 0);
+  const curSum = f.stocks.reduce((s, x) => s + x.cur * x.count, 0);
+  const pl = curSum - invest;
+  $('finStocksHead').innerHTML = `
+    <div class="st-summary">
+      <span>Вложено: <b>${fmtMoney(invest)}</b></span>
+      <span>Сейчас: <b>${fmtMoney(curSum)}</b></span>
+      <span class="${pl >= 0 ? 'pos' : 'neg'}">P/L: <b>${pl >= 0 ? '+' : ''}${fmtMoney(pl)}</b></span>
+    </div>`;
+  $('finStocks').innerHTML = f.stocks.map(s => {
+    const pl2 = (s.cur - s.buy) * s.count;
+    return `<div class="st-row">
+      <span class="st-name">${esc(s.name)}</span>
+      <span class="muted">× ${s.count}</span>
+      <span class="muted">куплено ${fmtMoney(s.buy)}</span>
+      <span class="st-cur" data-act="editFinStock" data-id="${s.id}" title="Клик — изменить цену">${fmtMoney(s.cur)}</span>
+      <span class="fin-amt ${pl2 >= 0 ? 'pos' : 'neg'}">${pl2 >= 0 ? '+' : ''}${fmtMoney(pl2)}</span>
+      <button class="ic del" data-act="finDelStock" data-id="${s.id}" title="Удалить">✕</button>
+    </div>`;
+  }).join('') || '<p class="muted" style="font-size:13px">Акций пока нет.</p>';
+
+  // ежемесячные
+  const mtTotal = f.monthly.reduce((s, x) => s + x.amount, 0);
+  $('finMonthlyTotal').textContent = 'итого ' + fmtMoney(mtTotal) + '/мес';
+  $('finMonthly').innerHTML = f.monthly.map(x => `
+    <div class="fin-row">
+      <span class="muted fin-date">${x.day} числа</span>
+      <span class="fin-comment">${esc(x.name)}</span>
+      <span class="fin-amt neg">−${fmtMoney(x.amount)}</span>
+      <button class="ic del" data-act="finDelMonthly" data-id="${x.id}" title="Удалить">✕</button>
+    </div>`).join('') || '<p class="muted" style="font-size:13px">Ничего не добавлено.</p>';
+
+  // предстоящие разовые
+  const tKey = todayKey();
+  const in7 = datePlus(7);
+  const sorted = f.upcoming.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  $('finUpcoming').innerHTML = sorted.map(x => {
+    const soon = !x.paid && x.date >= tKey && x.date <= in7;
+    return `<div class="fin-row ${x.paid ? 'paid' : ''} ${soon ? 'soon' : ''}">
+      <span class="muted fin-date">${x.date}</span>
+      <span class="fin-comment">${esc(x.name)}</span>
+      <span class="fin-amt neg">−${fmtMoney(x.amount)}</span>
+      ${x.paid ? '<span class="tag">оплачено</span>' : (soon ? '<span class="tag warn">скоро</span>' : '')}
+      <button class="ic" data-act="toggleFinPaid" data-id="${x.id}" title="${x.paid ? 'Вернуть в отложенные' : 'Отметить оплаченным'}">${x.paid ? '↩' : '✓'}</button>
+      <button class="ic del" data-act="finDelUpcoming" data-id="${x.id}" title="Удалить">✕</button>
+    </div>`;
+  }).join('') || '<p class="muted" style="font-size:13px">Предстоящих трат нет.</p>';
+}
+
 /* -------- календарь: рендер -------- */
 function renderGcalSetup() {
   const box = $('gcalSetup');
@@ -1695,6 +1933,16 @@ document.addEventListener('click', e => {
     case 'timerStart': startTimer(Number(t.dataset.min)); break;
     case 'timerStartCustom': { const v = Number(($('timerCustom') || {}).value); if (v && v > 0) startTimer(v); break; }
     case 'timerStop': stopTimer(); break;
+    case 'finAddEntry': addFinEntry(); break;
+    case 'finDelEntry': delFinEntry(t.dataset.id); break;
+    case 'finAddStock': addFinStock(); break;
+    case 'finDelStock': delFinStock(t.dataset.id); break;
+    case 'editFinStock': editFinStockCur(t.dataset.id); break;
+    case 'finAddMonthly': addFinMonthly(); break;
+    case 'finDelMonthly': delFinMonthly(t.dataset.id); break;
+    case 'finAddUpcoming': addFinUpcoming(); break;
+    case 'finDelUpcoming': delFinUpcoming(t.dataset.id); break;
+    case 'toggleFinPaid': toggleFinPaid(t.dataset.id); break;
     case 'addListBtn': addList(); break;
     case 'delHabit': state.habits = state.habits.filter(h => h.id !== t.dataset.id); saveState(); renderToday(); renderHabits(); break;
     case 'addTaskBtn': addTask(t.dataset.list); break;
