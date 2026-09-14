@@ -262,6 +262,18 @@
   .st-cur-input{width:90px;padding:3px 6px;font-weight:400}
   .st-summary{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;font-size:13px}
   .tag.warn{color:var(--warn);border-color:rgba(210,153,34,.4)}
+  .fin-input{font:inherit;font-size:13px;color:var(--text);background:transparent;border:1px solid transparent;border-radius:7px;padding:3px 6px;min-width:0;outline:none}
+  .fin-input:hover{border-color:var(--border)}
+  .fin-input:focus{border-color:var(--accent);background:var(--bg)}
+  .fin-input:disabled{opacity:.4}
+  .fin-date{width:92px;font-variant-numeric:tabular-nums}
+  .fin-comment{flex:1}
+  .fin-amount{width:110px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+  .fin-count{width:64px}
+  .fin-smal{width:92px;text-align:right}
+  .fin-day{width:52px;text-align:center}
+  .fin-input.pos{color:var(--good)}
+  .fin-input.neg{color:var(--bad)}
   @media (max-width:860px){.today-cal-row{grid-template-columns:1fr}}
   details.howto{margin-top:10px;font-size:13px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
   details.howto summary{cursor:pointer;font-weight:600;color:var(--text)}
@@ -1606,23 +1618,6 @@ function delFinStock(id) {
   state.finance.stocks = state.finance.stocks.filter(s => s.id !== id);
   saveState(); renderFinance();
 }
-function editFinStockCur(id) {
-  const s = state.finance.stocks.find(x => x.id === id);
-  const el = document.querySelector(`.st-cur[data-id="${id}"]`);
-  if (!s || !el) return;
-  const inp = document.createElement('input');
-  inp.type = 'number'; inp.className = 'lname-input st-cur-input'; inp.value = s.cur; inp.min = '0'; inp.step = 'any';
-  el.innerHTML = ''; el.appendChild(inp);
-  inp.focus(); inp.select();
-  let finished = false;
-  const commit = keep => {
-    if (finished) return; finished = true;
-    if (keep) { const v = parseFloat(inp.value); if (!isNaN(v) && v >= 0) s.cur = v; }
-    saveState(); renderFinance();
-  };
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit(true); } else if (e.key === 'Escape') { e.preventDefault(); commit(false); } });
-  inp.addEventListener('blur', () => commit(true));
-}
 function addFinMonthly() {
   const name = $('mtName').value.trim();
   const amt = parseFloat($('mtAmount').value);
@@ -1666,9 +1661,9 @@ function renderFinance() {
     <div class="muted" style="font-size:12px;margin-top:2px">Доходы «+», расходы «−» — итог считается автоматически.</div>`;
   $('finEntries').innerHTML = f.balanceEntries.slice().reverse().map(e => `
     <div class="fin-row">
-      <span class="muted fin-date">${e.date}</span>
-      <span class="fin-comment">${esc(e.comment || '')}</span>
-      <span class="fin-amt ${e.amount >= 0 ? 'pos' : 'neg'}">${e.amount >= 0 ? '+' : '−'}${fmtMoney(Math.abs(e.amount))}</span>
+      <input class="fin-input fin-date" data-field="entry" data-prop="date" data-id="${e.id}" value="${esc(e.date)}" title="Дата">
+      <input class="fin-input fin-comment" data-field="entry" data-prop="comment" data-id="${e.id}" value="${esc(e.comment || '')}" placeholder="Комментарий">
+      <input class="fin-input fin-amount ${e.amount >= 0 ? 'pos' : 'neg'}" type="number" step="any" data-field="entry" data-prop="amount" data-id="${e.id}" value="${e.amount}" title="Сумма (+ доход / − расход)">
       <button class="ic del" data-act="finDelEntry" data-id="${e.id}" title="Удалить">✕</button>
     </div>`).join('') || '<p class="muted" style="font-size:13px">Записей пока нет.</p>';
 
@@ -1685,10 +1680,10 @@ function renderFinance() {
   $('finStocks').innerHTML = f.stocks.map(s => {
     const pl2 = (s.cur - s.buy) * s.count;
     return `<div class="st-row">
-      <span class="st-name">${esc(s.name)}</span>
-      <span class="muted">× ${s.count}</span>
-      <span class="muted">куплено ${fmtMoney(s.buy)}</span>
-      <span class="st-cur" data-act="editFinStock" data-id="${s.id}" title="Клик — изменить цену">${fmtMoney(s.cur)}</span>
+      <input class="fin-input st-name" data-field="stock" data-prop="name" data-id="${s.id}" value="${esc(s.name)}" title="Название">
+      <input class="fin-input fin-count" type="number" step="any" data-field="stock" data-prop="count" data-id="${s.id}" value="${s.count}" title="Количество">
+      <input class="fin-input fin-smal" type="number" step="any" data-field="stock" data-prop="buy" data-id="${s.id}" value="${s.buy}" title="Цена покупки">
+      <input class="fin-input fin-smal" type="number" step="any" data-field="stock" data-prop="cur" data-id="${s.id}" value="${s.cur}" title="Текущая цена">
       <span class="fin-amt ${pl2 >= 0 ? 'pos' : 'neg'}">${pl2 >= 0 ? '+' : ''}${fmtMoney(pl2)}</span>
       <button class="ic del" data-act="finDelStock" data-id="${s.id}" title="Удалить">✕</button>
     </div>`;
@@ -1699,9 +1694,9 @@ function renderFinance() {
   $('finMonthlyTotal').textContent = 'итого ' + fmtMoney(mtTotal) + '/мес';
   $('finMonthly').innerHTML = f.monthly.map(x => `
     <div class="fin-row">
-      <span class="muted fin-date">${x.day} числа</span>
-      <span class="fin-comment">${esc(x.name)}</span>
-      <span class="fin-amt neg">−${fmtMoney(x.amount)}</span>
+      <input class="fin-input fin-day" data-field="monthly" data-prop="day" data-id="${x.id}" value="${x.day}" title="День месяца">
+      <input class="fin-input fin-comment" data-field="monthly" data-prop="name" data-id="${x.id}" value="${esc(x.name)}" title="Название">
+      <input class="fin-input fin-amount neg" type="number" step="any" data-field="monthly" data-prop="amount" data-id="${x.id}" value="${x.amount}" title="Сумма">
       <button class="ic del" data-act="finDelMonthly" data-id="${x.id}" title="Удалить">✕</button>
     </div>`).join('') || '<p class="muted" style="font-size:13px">Ничего не добавлено.</p>';
 
@@ -1712,15 +1707,37 @@ function renderFinance() {
   $('finUpcoming').innerHTML = sorted.map(x => {
     const soon = !x.paid && x.date >= tKey && x.date <= in7;
     return `<div class="fin-row ${x.paid ? 'paid' : ''} ${soon ? 'soon' : ''}">
-      <span class="muted fin-date">${x.date}</span>
-      <span class="fin-comment">${esc(x.name)}</span>
-      <span class="fin-amt neg">−${fmtMoney(x.amount)}</span>
+      <input class="fin-input fin-date" type="date" data-field="upcoming" data-prop="date" data-id="${x.id}" value="${esc(x.date)}">
+      <input class="fin-input fin-comment" data-field="upcoming" data-prop="name" data-id="${x.id}" value="${esc(x.name)}" ${x.paid ? 'disabled' : ''} title="Название">
+      <input class="fin-input fin-amount ${x.paid ? '' : 'neg'}" type="number" step="any" data-field="upcoming" data-prop="amount" data-id="${x.id}" value="${x.amount}" title="Сумма">
       ${x.paid ? '<span class="tag">оплачено</span>' : (soon ? '<span class="tag warn">скоро</span>' : '')}
       <button class="ic" data-act="toggleFinPaid" data-id="${x.id}" title="${x.paid ? 'Вернуть в отложенные' : 'Отметить оплаченным'}">${x.paid ? '↩' : '✓'}</button>
       <button class="ic del" data-act="finDelUpcoming" data-id="${x.id}" title="Удалить">✕</button>
     </div>`;
   }).join('') || '<p class="muted" style="font-size:13px">Предстоящих трат нет.</p>';
 }
+
+/* общее сохранение полей финансов (инпуты прямо в записях) */
+function finFieldTarget(el) {
+  const cls = el.dataset.field, id = el.dataset.id, prop = el.dataset.prop;
+  const arr = { entry: state.finance.balanceEntries, stock: state.finance.stocks, monthly: state.finance.monthly, upcoming: state.finance.upcoming }[cls];
+  const item = arr && arr.find(x => x.id === id);
+  if (!item) return null;
+  return { item, prop, raw: el.value, numeric: ['amount', 'count', 'buy', 'cur', 'day'].indexOf(prop) >= 0 };
+}
+function applyFinField(el) {
+  const t = finFieldTarget(el);
+  if (!t) return false;
+  let v;
+  if (t.numeric) {
+    v = t.prop === 'day' ? Math.floor(parseFloat(String(t.raw).replace(/[^\d]/g, ''))) : parseFloat(t.raw);
+    if (isNaN(v)) return false;
+  } else v = t.raw;
+  t.item[t.prop] = v;
+  return true;
+}
+function finFieldLive(el) { if (applyFinField(el)) scheduleSave(); }
+function finFieldCommit(el) { if (applyFinField(el)) { saveState(); renderFinance(); } }
 
 /* -------- календарь: рендер -------- */
 function renderGcalSetup() {
@@ -1973,7 +1990,6 @@ document.addEventListener('click', e => {
     case 'finDelEntry': delFinEntry(t.dataset.id); break;
     case 'finAddStock': addFinStock(); break;
     case 'finDelStock': delFinStock(t.dataset.id); break;
-    case 'editFinStock': editFinStockCur(t.dataset.id); break;
     case 'finAddMonthly': addFinMonthly(); break;
     case 'finDelMonthly': delFinMonthly(t.dataset.id); break;
     case 'finAddUpcoming': addFinUpcoming(); break;
@@ -2013,6 +2029,8 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('change', e => {
+  const fin = e.target.closest('[data-field]');
+  if (fin) { finFieldCommit(fin); return; }
   const t = e.target.closest('[data-act]');
   if (!t) return;
   const act = t.dataset.act;
@@ -2149,6 +2167,8 @@ document.addEventListener('input', e => {
   const note = e.target.closest('.note textarea');
   if (note) noteInput(note.closest('.note').dataset.id);
   if (e.target && e.target.id === 'evNoteArea') evNoteInput();
+  const fin = e.target.closest('[data-field]');
+  if (fin) finFieldLive(fin);
 });
 
 $('evModal').addEventListener('click', e => {
