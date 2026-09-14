@@ -209,7 +209,8 @@
   .today-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px}
   .timer-idle,.timer-run{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .timer-presets{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .timer-idle .btn{margin-left:auto}
+  .timer-custom{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .timer-custom input{width:70px}
   .timer-label{font-size:13px;font-weight:700;color:var(--muted);margin-right:2px}
   .ic.preset{font-size:12px;border:1px solid var(--border);border-radius:8px;padding:4px 8px;color:var(--muted)}
   .ic.preset:hover{color:var(--accent2);border-color:var(--accent)}
@@ -270,7 +271,7 @@
   .fin-input:hover{border-color:var(--border)}
   .fin-input:focus{border-color:var(--accent);background:var(--bg)}
   .fin-input:disabled{opacity:.4}
-  .fin-date{width:92px;font-variant-numeric:tabular-nums}
+  .fin-date{width:104px;font-variant-numeric:tabular-nums}
   .fin-comment{flex:1}
   .fin-amount{width:110px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
   .fin-count{width:64px}
@@ -453,7 +454,7 @@
           <option value="1">+ доход</option>
           <option value="-1">− расход</option>
         </select>
-        <input type="number" id="finAmount" placeholder="Сумма" min="0" step="any" style="width:120px">
+        <input type="text" id="finAmount" placeholder="Сумма (+ / −)" autocomplete="off" style="width:110px">
         <input type="text" id="finComment" placeholder="Комментарий" autocomplete="off" style="flex:1">
         <button class="btn" data-act="finAddEntry">Добавить</button>
       </div>
@@ -465,9 +466,9 @@
       <div id="finStocksHead"></div>
       <div class="add-row">
         <input type="text" id="stName" placeholder="Название / тикер" autocomplete="off" style="flex:1">
-        <input type="number" id="stCount" placeholder="Кол-во" min="0" step="any" style="width:90px">
-        <input type="number" id="stBuy" placeholder="Цена покупки" min="0" step="any" style="width:120px">
-        <input type="number" id="stCur" placeholder="Тек. цена" min="0" step="any" style="width:110px">
+        <input type="text" id="stCount" placeholder="Кол-во" autocomplete="off" style="width:80px">
+        <input type="text" id="stBuy" placeholder="Цена покупки" autocomplete="off" style="width:110px">
+        <input type="text" id="stCur" placeholder="Тек. цена" autocomplete="off" style="width:100px">
         <button class="btn" data-act="finAddStock">Добавить</button>
       </div>
       <div id="finStocks" class="stack"></div>
@@ -477,8 +478,8 @@
       <h3>🗓 Ежемесячные траты <span class="tag" id="finMonthlyTotal"></span></h3>
       <div class="add-row">
         <input type="text" id="mtName" placeholder="Что за трата" autocomplete="off" style="flex:1">
-        <input type="number" id="mtAmount" placeholder="Сумма" min="0" step="any" style="width:120px">
-        <input type="number" id="mtDay" placeholder="День (число)" min="1" max="31" style="width:110px">
+        <input type="text" id="mtAmount" placeholder="Сумма" autocomplete="off" style="width:110px">
+      <input type="text" id="mtDay" placeholder="День (1-31)" autocomplete="off" style="width:100px">
         <button class="btn" data-act="finAddMonthly">Добавить</button>
       </div>
       <div id="finMonthly" class="stack"></div>
@@ -488,8 +489,8 @@
       <h3>⏳ Предстоящие разовые траты</h3>
       <div class="add-row">
         <input type="text" id="upName" placeholder="Что за трата" autocomplete="off" style="flex:1">
-        <input type="number" id="upAmount" placeholder="Сумма" min="0" step="any" style="width:120px">
-        <input type="date" id="upDate">
+        <input type="text" id="upAmount" placeholder="Сумма" autocomplete="off" style="width:110px">
+        <input type="text" id="upDate" placeholder="ДД.ММ.ГГГГ" autocomplete="off" style="width:120px">
         <button class="btn" data-act="finAddUpcoming">Добавить</button>
       </div>
       <div id="finUpcoming" class="stack"></div>
@@ -1303,9 +1304,11 @@ function renderTimerBox() {
           <button class="ic preset" data-act="timerStart" data-min="15">15 мин</button>
           <button class="ic preset" data-act="timerStart" data-min="25">25 мин</button>
           <button class="ic preset" data-act="timerStart" data-min="45">45 мин</button>
-          <input type="number" id="timerCustom" min="1" max="720" placeholder="мин" title="Свой таймер">
         </div>
-        <button class="btn" data-act="timerStartCustom">Пуск</button>
+        <div class="timer-custom">
+          <input type="number" id="timerCustom" min="1" max="720" placeholder="мин" title="Свой таймер">
+          <button class="btn" data-act="timerStartCustom">Пуск</button>
+        </div>
       </div>`;
   }
 }
@@ -1587,6 +1590,14 @@ function renderNotes() {
 }
 
 /* ================= ФИНАНСЫ ================= */
+function num(s) {
+  return parseFloat(String(s == null ? '' : s).trim().replace(',', '.'));
+}
+function parseDateInput(s) {
+  s = String(s == null ? '' : s).trim();
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  return m ? m[3] + '-' + pad(m[2]) + '-' + pad(m[1]) : s;
+}
 function fmtMoney(n) {
   return Math.round(n).toLocaleString('ru-RU') + ' ₽';
 }
@@ -1598,7 +1609,7 @@ function datePlus(days) {
 }
 function addFinEntry() {
   const type = $('finType').value;
-  const amt = parseFloat($('finAmount').value);
+  const amt = num($('finAmount').value);
   if (!amt || isNaN(amt) || amt <= 0) { $('finAmount').focus(); return; }
   const comment = $('finComment').value.trim();
   state.finance.balanceEntries.push({ id: uid(), date: todayKey(), amount: (type === '-1' ? -1 : 1) * amt, comment });
@@ -1611,10 +1622,10 @@ function delFinEntry(id) {
 }
 function addFinStock() {
   const name = $('stName').value.trim();
-  const count = parseFloat($('stCount').value);
-  const buy = parseFloat($('stBuy').value);
+  const count = num($('stCount').value);
+  const buy = num($('stBuy').value);
   if (!name || !count || isNaN(buy)) { $('stName').focus(); return; }
-  const cur = parseFloat($('stCur').value);
+  const cur = num($('stCur').value);
   state.finance.stocks.push({ id: uid(), name, count, buy, cur: isNaN(cur) ? buy : cur });
   $('stName').value = ''; $('stCount').value = ''; $('stBuy').value = ''; $('stCur').value = '';
   saveState(); renderFinance();
@@ -1625,8 +1636,8 @@ function delFinStock(id) {
 }
 function addFinMonthly() {
   const name = $('mtName').value.trim();
-  const amt = parseFloat($('mtAmount').value);
-  const day = Math.floor(parseFloat($('mtDay').value));
+  const amt = num($('mtAmount').value);
+  const day = Math.floor(num($('mtDay').value));
   if (!name || !amt || isNaN(amt) || isNaN(day) || day < 1 || day > 31) { $('mtName').focus(); return; }
   state.finance.monthly.push({ id: uid(), name, amount: amt, day });
   $('mtName').value = ''; $('mtAmount').value = ''; $('mtDay').value = '';
@@ -1638,8 +1649,8 @@ function delFinMonthly(id) {
 }
 function addFinUpcoming() {
   const name = $('upName').value.trim();
-  const amt = parseFloat($('upAmount').value);
-  const date = $('upDate').value;
+  const amt = num($('upAmount').value);
+  const date = parseDateInput($('upDate').value);
   if (!name || !amt || isNaN(amt) || !date) { $('upName').focus(); return; }
   state.finance.upcoming.push({ id: uid(), name, amount: amt, date, paid: false });
   $('upName').value = ''; $('upAmount').value = ''; $('upDate').value = '';
@@ -1666,9 +1677,9 @@ function renderFinance() {
     <div class="muted" style="font-size:12px;margin-top:2px">Доходы «+», расходы «−» — итог считается автоматически.</div>`;
   $('finEntries').innerHTML = f.balanceEntries.slice().reverse().map(e => `
     <div class="fin-row">
-      <input class="fin-input fin-date" data-field="entry" data-prop="date" data-id="${e.id}" value="${esc(e.date)}" title="Дата">
+      <input class="fin-input fin-date" type="text" data-field="entry" data-prop="date" data-id="${e.id}" value="${esc(e.date)}" placeholder="ГГГГ-ММ-ДД" title="Дата">
       <input class="fin-input fin-comment" data-field="entry" data-prop="comment" data-id="${e.id}" value="${esc(e.comment || '')}" placeholder="Комментарий">
-      <input class="fin-input fin-amount ${e.amount >= 0 ? 'pos' : 'neg'}" type="number" step="any" data-field="entry" data-prop="amount" data-id="${e.id}" value="${e.amount}" title="Сумма (+ доход / − расход)">
+      <input class="fin-input fin-amount ${e.amount >= 0 ? 'pos' : 'neg'}" type="text" data-field="entry" data-prop="amount" data-id="${e.id}" value="${e.amount}" title="Сумма (+ доход / − расход)">
       <button class="ic del" data-act="finDelEntry" data-id="${e.id}" title="Удалить">✕</button>
     </div>`).join('') || '<p class="muted" style="font-size:13px">Записей пока нет.</p>';
 
@@ -1685,10 +1696,10 @@ function renderFinance() {
   $('finStocks').innerHTML = f.stocks.map(s => {
     const pl2 = (s.cur - s.buy) * s.count;
     return `<div class="st-row">
-      <input class="fin-input st-name" data-field="stock" data-prop="name" data-id="${s.id}" value="${esc(s.name)}" title="Название">
-      <input class="fin-input fin-count" type="number" step="any" data-field="stock" data-prop="count" data-id="${s.id}" value="${s.count}" title="Количество">
-      <input class="fin-input fin-smal" type="number" step="any" data-field="stock" data-prop="buy" data-id="${s.id}" value="${s.buy}" title="Цена покупки">
-      <input class="fin-input fin-smal" type="number" step="any" data-field="stock" data-prop="cur" data-id="${s.id}" value="${s.cur}" title="Текущая цена">
+      <input class="fin-input st-name" data-field="stock" data-prop="name" data-id="${s.id}" value="${esc(s.name)}" title="Название / тикер">
+      <input class="fin-input fin-count" type="text" data-field="stock" data-prop="count" data-id="${s.id}" value="${s.count}" title="Количество">
+      <input class="fin-input fin-smal" type="text" data-field="stock" data-prop="buy" data-id="${s.id}" value="${s.buy}" title="Цена покупки">
+      <input class="fin-input fin-smal" type="text" data-field="stock" data-prop="cur" data-id="${s.id}" value="${s.cur}" title="Текущая цена">
       <span class="fin-amt ${pl2 >= 0 ? 'pos' : 'neg'}">${pl2 >= 0 ? '+' : ''}${fmtMoney(pl2)}</span>
       <button class="ic del" data-act="finDelStock" data-id="${s.id}" title="Удалить">✕</button>
     </div>`;
@@ -1699,9 +1710,9 @@ function renderFinance() {
   $('finMonthlyTotal').textContent = 'итого ' + fmtMoney(mtTotal) + '/мес';
   $('finMonthly').innerHTML = f.monthly.map(x => `
     <div class="fin-row">
-      <input class="fin-input fin-day" data-field="monthly" data-prop="day" data-id="${x.id}" value="${x.day}" title="День месяца">
+      <input class="fin-input fin-day" type="text" data-field="monthly" data-prop="day" data-id="${x.id}" value="${x.day}" title="День месяца">
       <input class="fin-input fin-comment" data-field="monthly" data-prop="name" data-id="${x.id}" value="${esc(x.name)}" title="Название">
-      <input class="fin-input fin-amount neg" type="number" step="any" data-field="monthly" data-prop="amount" data-id="${x.id}" value="${x.amount}" title="Сумма">
+      <input class="fin-input fin-amount neg" type="text" data-field="monthly" data-prop="amount" data-id="${x.id}" value="${x.amount}" title="Сумма">
       <button class="ic del" data-act="finDelMonthly" data-id="${x.id}" title="Удалить">✕</button>
     </div>`).join('') || '<p class="muted" style="font-size:13px">Ничего не добавлено.</p>';
 
@@ -1712,9 +1723,9 @@ function renderFinance() {
   $('finUpcoming').innerHTML = sorted.map(x => {
     const soon = !x.paid && x.date >= tKey && x.date <= in7;
     return `<div class="fin-row ${x.paid ? 'paid' : ''} ${soon ? 'soon' : ''}">
-      <input class="fin-input fin-date" type="date" data-field="upcoming" data-prop="date" data-id="${x.id}" value="${esc(x.date)}">
-      <input class="fin-input fin-comment" data-field="upcoming" data-prop="name" data-id="${x.id}" value="${esc(x.name)}" ${x.paid ? 'disabled' : ''} title="Название">
-      <input class="fin-input fin-amount ${x.paid ? '' : 'neg'}" type="number" step="any" data-field="upcoming" data-prop="amount" data-id="${x.id}" value="${x.amount}" title="Сумма">
+      <input class="fin-input fin-date" type="text" data-field="upcoming" data-prop="date" data-id="${x.id}" value="${esc(x.date)}" placeholder="ГГГГ-ММ-ДД" title="Дата">
+      <input class="fin-input fin-comment" data-field="upcoming" data-prop="name" data-id="${x.id}" value="${esc(x.name)}" ${x.paid ? 'disabled' : ''} placeholder="Что за трата" title="Название">
+      <input class="fin-input fin-amount ${x.paid ? '' : 'neg'}" type="text" data-field="upcoming" data-prop="amount" data-id="${x.id}" value="${x.amount}" title="Сумма">
       ${x.paid ? '<span class="tag">оплачено</span>' : (soon ? '<span class="tag warn">скоро</span>' : '')}
       <button class="ic" data-act="toggleFinPaid" data-id="${x.id}" title="${x.paid ? 'Вернуть в отложенные' : 'Отметить оплаченным'}">${x.paid ? '↩' : '✓'}</button>
       <button class="ic del" data-act="finDelUpcoming" data-id="${x.id}" title="Удалить">✕</button>
@@ -1728,15 +1739,17 @@ function finFieldTarget(el) {
   const arr = { entry: state.finance.balanceEntries, stock: state.finance.stocks, monthly: state.finance.monthly, upcoming: state.finance.upcoming }[cls];
   const item = arr && arr.find(x => x.id === id);
   if (!item) return null;
-  return { item, prop, raw: el.value, numeric: ['amount', 'count', 'buy', 'cur', 'day'].indexOf(prop) >= 0 };
+  return { item, prop, raw: el.value, cls, numeric: ['amount', 'count', 'buy', 'cur', 'day'].indexOf(prop) >= 0 };
 }
 function applyFinField(el) {
   const t = finFieldTarget(el);
   if (!t) return false;
   let v;
   if (t.numeric) {
-    v = t.prop === 'day' ? Math.floor(parseFloat(String(t.raw).replace(/[^\d]/g, ''))) : parseFloat(t.raw);
+    v = t.prop === 'day' ? Math.floor(num(t.raw)) : num(t.raw);
     if (isNaN(v)) return false;
+  } else if (t.cls === 'upcoming' && t.prop === 'date') {
+    v = parseDateInput(t.raw);
   } else v = t.raw;
   t.item[t.prop] = v;
   return true;
