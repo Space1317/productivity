@@ -105,6 +105,8 @@
   .lname-input{font:inherit;font-weight:700;font-size:14px;flex:1;min-width:0;padding:4px 8px;color:var(--text);background:var(--bg);border:1px solid var(--accent);border-radius:8px;outline:none}
   .list-sep{display:flex;align-items:center;gap:10px;margin:10px 0 4px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
   .list-sep::before,.list-sep::after{content:'';flex:1;border-top:1px solid var(--border)}
+  .list-sep.done-sep{color:var(--good)}
+  .list-sep.done-sep::before,.list-sep.done-sep::after{border-top-color:rgba(63,185,80,.4)}
   .lcard-divider{border-top:1px solid var(--border);margin:10px 0}
   .lcard-add{display:flex;gap:10px}
   .lcard-add input{flex:1}
@@ -576,7 +578,10 @@ if (!Array.isArray(state.lists)) {
 }
 state.lists.forEach(l => {
   if (!Array.isArray(l.tasks)) l.tasks = [];
-  l.tasks.forEach(t => { if (typeof t.locked === 'undefined') t.locked = false; });
+  l.tasks.forEach(t => {
+    if (typeof t.locked === 'undefined') t.locked = false;
+    if (t.done && !t.completedAt) t.completedAt = Date.now();
+  });
 });
 if (!state.activeListId || !state.lists.find(l => l.id === state.activeListId)) state.activeListId = state.lists[0].id;
 delete state.tasks;
@@ -643,6 +648,7 @@ function toggleTask(id) {
   if (!t) return;
   if (!t.done && t.locked && lst.tasks.some(x => x.id !== t.id && !x.done)) return; // залочена
   t.done = !t.done;
+  t.completedAt = t.done ? Date.now() : null;
   saveState(); renderToday(); renderTasks();
 }
 function toggleTaskLock(id) {
@@ -676,6 +682,25 @@ function editTask(id) {
     else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
   });
   inp.addEventListener('blur', () => commit(true));
+}
+
+/* выполненные задачи первого списка удаляются в 00:00 */
+function cleanupFirstListDone() {
+  const l = state.lists[0];
+  if (!l) return;
+  const tKey = todayKey();
+  const before = l.tasks.length;
+  l.tasks = l.tasks.filter(t => !(t.done && t.completedAt && fmtDay(new Date(t.completedAt)) < tKey));
+  if (l.tasks.length !== before) saveState();
+}
+function scheduleMidnightCleanup() {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5); // 00:00:05
+  setTimeout(() => {
+    cleanupFirstListDone();
+    renderToday(); renderTasks();
+    scheduleMidnightCleanup();
+  }, next - now);
 }
 
 /* перетаскивание задач (drag & drop) */
@@ -1193,7 +1218,7 @@ function renderToday() {
     ? `«${mainList ? mainList.name : ''}» — ${tDone} из ${allTasks.length}`
     : '';
   $('taskLockBadge').textContent = mainList && mainList.tasks.some(t => t.locked) ? '🔒 лок' : '';
-  $('todayTasks').innerHTML = '<ul class="list">' + (allTasks.length ? tasksHtml(mainList, true) : '<li class="muted">Задач в этом списке нет.</li>') + '</ul>';
+  $('todayTasks').innerHTML = allTasks.length ? listBodyHTML(mainList, true, true) : '<ul class="list"><li class="muted">Задач в этом списке нет.</li></ul>';
 
 // мини-календарь + события выбранного дня (сверху)
   renderMiniToday();
@@ -1353,16 +1378,28 @@ function tasksHtml(lst, compact) {
   return lst.tasks.map(t => taskRowHTML(t, compact)).join('');
 }
 
+// Секции внутри карточки. Первый список: активные / 🔒 залоченные / ✔ выполненные
+function listBodyHTML(l, compact, isFirst) {
+  const rows = t => taskRowHTML(t, compact);
+  if (isFirst) {
+    const active = l.tasks.filter(t => !t.done && !t.locked);
+    const locked = l.tasks.filter(t => !t.done && t.locked);
+    const done = l.tasks.filter(t => t.done);
+    let out = '';
+    if (active.length) out += `<ul class="list">${active.map(rows).join('')}</ul>`;
+    if (locked.length) out += `<div class="list-sep"><span>🔒 Залоченные</span></div><div class="lockzone"><ul class="list">${locked.map(rows).join('')}</ul></div>`;
+    if (done.length) out += `<div class="list-sep done-sep"><span>✔ Выполненные</span></div><ul class="list donezone">${done.map(rows).join('')}</ul>`;
+    return out || '<p class="muted" style="font-size:13px;padding:6px 4px">В категории пока нет задач.</p>';
+  }
+  const norm = l.tasks.filter(t => !t.locked);
+  const lockd = l.tasks.filter(t => t.locked);
+  let out = norm.length ? `<ul class="list">${norm.map(rows).join('')}</ul>` : (l.tasks.length ? '' : '<p class="muted" style="font-size:13px;padding:6px 4px">В категории пока нет задач.</p>');
+  if (lockd.length) out += `<div class="list-sep"><span>🔒 Залоченные</span></div><div class="lockzone"><ul class="list">${lockd.map(rows).join('')}</ul></div>`;
+  return out;
+}
+
 function renderTasks() {
-  const stack = state.lists.map(l => {
-    const norm = l.tasks.filter(t => !t.locked);
-    const lockd = l.tasks.filter(t => t.locked);
-    const normHtml = norm.length
-      ? `<ul class="list">${norm.map(t => taskRowHTML(t, false)).join('')}</ul>`
-      : (l.tasks.length ? '' : '<p class="muted" style="font-size:13px;padding:6px 4px">В категории пока нет задач.</p>');
-    const lockHtml = lockd.length
-      ? `<div class="list-sep"><span>🔒 Залоченные</span></div><div class="lockzone"><ul class="list">${lockd.map(t => taskRowHTML(t, false)).join('')}</ul></div>`
-      : '';
+  const stack = state.lists.map((l, idx) => {
     return `
     <div class="lcard" data-list-id="${l.id}">
       <div class="lcard-head">
@@ -1374,8 +1411,7 @@ function renderTasks() {
         </span>
         <button class="ic del" data-act="delList" data-id="${l.id}" title="Удалить категорию">✕</button>
       </div>
-      ${normHtml}
-      ${lockHtml}
+      ${listBodyHTML(l, false, idx === 0)}
       <div class="lcard-divider"></div>
       <div class="lcard-add">
         <input type="text" class="task-input-local" data-list="${l.id}" placeholder="Новая задача…" autocomplete="off">
@@ -2129,6 +2165,8 @@ function addHabit() {
 }
 
 /* ================= init ================= */
+cleanupFirstListDone();
+scheduleMidnightCleanup();
 renderAll();
 showTab('today');
 tick();
