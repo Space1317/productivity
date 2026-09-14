@@ -2165,6 +2165,10 @@ function addHabit() {
 }
 
 /* ================= init ================= */
+// при каждом открытии страницы — календарь на сегодняшней дате
+state.calDay = todayKey();
+state.calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
+saveState();
 cleanupFirstListDone();
 scheduleMidnightCleanup();
 renderAll();
