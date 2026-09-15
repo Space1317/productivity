@@ -477,16 +477,19 @@
     </div>
 
     <div class="card">
-      <h3>📈 Акции</h3>
+      <h3>📈 Акции
+        <button class="btn btn-ghost" data-act="refreshPrices" style="font-size:12px;padding:5px 12px">⟳ Обновить цены</button>
+      </h3>
       <div id="finStocksHead"></div>
       <div class="add-row">
-        <input type="text" id="stName" placeholder="Название / тикер" autocomplete="off" style="flex:1">
+        <input type="text" id="stName" placeholder="Название или тикер (AAPL, SBER.ME, BTC)" autocomplete="off" style="flex:1">
         <input type="text" id="stCount" placeholder="Кол-во" autocomplete="off" style="width:80px">
         <input type="text" id="stBuy" placeholder="Цена покупки" autocomplete="off" style="width:110px">
         <input type="text" id="stCur" placeholder="Тек. цена" autocomplete="off" style="width:100px">
         <button class="btn" data-act="finAddStock">Добавить</button>
       </div>
       <div id="finStocks" class="stack"></div>
+      <p class="muted" id="stRefreshStatus" style="font-size:12px;margin-top:10px"></p>
     </div>
 
     <div class="card">
@@ -1722,6 +1725,77 @@ function delFinStock(id) {
   state.finance.stocks = state.finance.stocks.filter(s => s.id !== id);
   saveState(); renderFinance();
 }
+
+/* ---------- автообновление цен акций ---------- */
+const CRYPTO_MAP = {
+  BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', XRP: 'ripple', DOGE: 'dogecoin',
+  ADA: 'cardano', BNB: 'bnb', TON: 'the-open-network', TRX: 'tron', DOT: 'polkadot',
+  LTC: 'litecoin', AVAX: 'avalanche-2', SHIB: 'shiba-inu', USDT: 'tether', USDC: 'usdc',
+  XMR: 'monero', LINK: 'chainlink', ATOM: 'cosmos', NEAR: 'near', FIL: 'filecoin',
+  UNI: 'uniswap', PEPE: 'pepe', APT: 'aptos', SUI: 'sui', ARB: 'arbitrum',
+  OP: 'optimism', POL: 'polygon-ecosystem-token', MATIC: 'matic-network', ETC: 'ethereum-classic', AAVE: 'aave'
+};
+const YAHOO_PROXIES = ['https://corsproxy.io/?url=', 'https://api.allorigins.win/raw?url='];
+
+function fetchWithTimeout(url) {
+  return fetch(url, { signal: AbortSignal.timeout(15000) });
+}
+async function fetchYahooJson(sym) {
+  const yurl = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?range=1d&interval=1d';
+  let lastErr = null;
+  for (const base of YAHOO_PROXIES) {
+    try {
+      const r = await fetchWithTimeout(base + encodeURIComponent(yurl));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json();
+      const meta = j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta;
+      const p = meta && meta.regularMarketPrice;
+      if (p) return p;
+      throw new Error('нет цены в ответе');
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('не удалось получить ответ');
+}
+async function fetchPrice(sym) {
+  const up = String(sym || '').trim().toUpperCase().replace(/\s+/g, '');
+  if (!up) throw new Error('пустой тикер');
+  const coin = CRYPTO_MAP[up];
+  if (coin) {
+    const r = await fetchWithTimeout('https://api.coingecko.com/api/v3/simple/price?ids=' + coin + '&vs_currencies=usd');
+    if (!r.ok) throw new Error('CoinGecko HTTP ' + r.status);
+    const j = await r.json();
+    const p = j[coin] && j[coin].usd;
+    if (!p) throw new Error('нет цены');
+    return p;
+  }
+  return await fetchYahooJson(up);
+}
+async function fetchUsdRub() {
+  try { return await fetchYahooJson('USDRUB%3DX'); } catch (e) { return null; }
+}
+async function refreshStockPrices() {
+  const stocks = state.finance.stocks;
+  const st = $('stRefreshStatus');
+  if (!stocks.length) { if (st) st.textContent = 'Сначала добавьте акции.'; return; }
+  if (st) st.textContent = 'Обновляю цены…';
+  let fx = 1;
+  try { const r = await fetchUsdRub(); if (r && r > 0) fx = r; } catch (e) {}
+  let updated = 0;
+  const failed = [];
+  for (const s of stocks) {
+    try {
+      const p = await fetchPrice(s.name);
+      if (p && p > 0) { s.cur = p * fx; updated++; }
+      else failed.push(s.name);
+    } catch (e) { failed.push(s.name); }
+  }
+  saveState(); renderFinance();
+  if (st) {
+    st.textContent = failed.length
+      ? 'Обновлено: ' + updated + '. Не получилось: ' + failed.join(', ') + '. Проверьте тикер (пример: AAPL, SBER.ME, BTC).'
+      : 'Цены обновлены (' + updated + ')' + (fx > 1 ? ' (по курсу доллара)' : '') + '.';
+  }
+}
 function addFinMonthly() {
   const name = $('mtName').value.trim();
   const amt = num($('mtAmount').value);
@@ -1785,7 +1859,7 @@ function renderFinance() {
   $('finStocks').innerHTML = f.stocks.map(s => {
     const pl2 = (s.cur - s.buy) * s.count;
     return `<div class="st-row">
-      <input class="fin-input st-name" data-field="stock" data-prop="name" data-id="${s.id}" value="${esc(s.name)}" title="Название / тикер">
+      <input class="fin-input st-name" data-field="stock" data-prop="name" data-id="${s.id}" value="${esc(s.name)}" title="Название или тикер — по нему обновляется цена (AAPL, SBER.ME, BTC)">
       <input class="fin-input fin-count" type="text" data-field="stock" data-prop="count" data-id="${s.id}" value="${s.count}" title="Количество">
       <input class="fin-input fin-smal" type="text" data-field="stock" data-prop="buy" data-id="${s.id}" value="${s.buy}" title="Цена покупки">
       <input class="fin-input fin-smal" type="text" data-field="stock" data-prop="cur" data-id="${s.id}" value="${s.cur}" title="Текущая цена">
@@ -2096,6 +2170,7 @@ document.addEventListener('click', e => {
     case 'finAddEntry': addFinEntry(); break;
     case 'finDelEntry': delFinEntry(t.dataset.id); break;
     case 'finAddStock': addFinStock(); break;
+    case 'refreshPrices': refreshStockPrices(); break;
     case 'finDelStock': delFinStock(t.dataset.id); break;
     case 'finAddMonthly': addFinMonthly(); break;
     case 'finDelMonthly': delFinMonthly(t.dataset.id); break;
