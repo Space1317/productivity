@@ -1735,7 +1735,12 @@ const CRYPTO_MAP = {
   UNI: 'uniswap', PEPE: 'pepe', APT: 'aptos', SUI: 'sui', ARB: 'arbitrum',
   OP: 'optimism', POL: 'polygon-ecosystem-token', MATIC: 'matic-network', ETC: 'ethereum-classic', AAVE: 'aave'
 };
-const YAHOO_PROXIES = ['https://corsproxy.io/?url=', 'https://api.allorigins.win/raw?url='];
+const YAHOO_PROXIES = [
+  'https://corsproxy.io/?url=',
+  'https://api.allorigins.win/raw?url=',
+  'https://cors.apiquery.workers.dev/?url=',
+  'https://api.codetabs.com/v1/proxy?quest='
+];
 
 function fetchWithTimeout(url) {
   return fetch(url, { signal: AbortSignal.timeout(15000) });
