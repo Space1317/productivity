@@ -601,6 +601,22 @@ state.lists.forEach(l => {
   });
 });
 if (!state.activeListId || !state.lists.find(l => l.id === state.activeListId)) state.activeListId = state.lists[0].id;
+// выполненные задачи из всех списков → «Выполненные» первого списка
+if (state.lists.length > 1) {
+  const first = state.lists[0];
+  for (let i = 1; i < state.lists.length; i++) {
+    const l = state.lists[i];
+    const dont = l.tasks.filter(t => t.done);
+    if (dont.length) {
+      l.tasks = l.tasks.filter(t => !t.done);
+      dont.forEach(t => {
+        if (!t.backTo) t.backTo = l.id;
+        if (!t.completedAt) t.completedAt = Date.now();
+      });
+      first.tasks = first.tasks.concat(dont);
+    }
+  }
+}
 delete state.tasks;
 if (!Array.isArray(state.noteLists)) {
   const oldNotes = Array.isArray(state.notes) ? state.notes : [];
@@ -664,8 +680,26 @@ function toggleTask(id) {
   const t = lst && lst.tasks.find(x => x.id === id);
   if (!t) return;
   if (!t.done && t.locked && lst.tasks.some(x => x.id !== t.id && !x.done)) return; // залочена
-  t.done = !t.done;
-  t.completedAt = t.done ? Date.now() : null;
+  if (!t.done) {
+    // отметили: выполненные со всех списков уходят в «Выполненные» первого списка
+    t.done = true;
+    t.completedAt = Date.now();
+    if (lst !== state.lists[0]) {
+      lst.tasks = lst.tasks.filter(x => x.id !== t.id);
+      t.backTo = lst.id; // вернуть сюда, если снять галочку
+      state.lists[0].tasks.push(t);
+    }
+  } else {
+    // сняли галочку — возвращаем в исходный список
+    t.done = false;
+    t.completedAt = null;
+    if (t.backTo) {
+      if (state.lists[0].tasks.indexOf(t) >= 0) state.lists[0].tasks = state.lists[0].tasks.filter(x => x.id !== t.id);
+      const target = state.lists.find(l => l.id === t.backTo) || state.lists[0];
+      target.tasks.push(t);
+      delete t.backTo;
+    }
+  }
   saveState(); renderToday(); renderTasks();
 }
 function toggleTaskLock(id) {
