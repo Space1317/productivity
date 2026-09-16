@@ -342,6 +342,11 @@
       </div>
     </div>
 
+    <div class="card" id="todayPlanned" style="display:none">
+      <h3>📌 Сегодня по плану</h3>
+      <div id="todayPlannedList"></div>
+    </div>
+
     <div class="card">
       <h3>Прогресс дня
         <span class="tag" id="dayProgressLabel"></span>
@@ -490,11 +495,10 @@
     </div>
 
     <div class="card">
-      <h3>⏳ Предстоящие разовые траты</h3>
+      <h3>Разовые траты</h3>
       <div class="add-row">
         <input type="text" id="upName" placeholder="Что за трата" autocomplete="off" style="flex:1">
         <input type="text" id="upAmount" placeholder="Сумма" autocomplete="off" style="width:110px">
-        <input type="text" id="upDate" placeholder="ДД.ММ.ГГГГ" autocomplete="off" style="width:120px">
         <button class="btn" data-act="finAddUpcoming">Добавить</button>
       </div>
       <div id="finUpcoming" class="stack"></div>
@@ -1262,6 +1266,22 @@ function renderToday() {
   bar.style.width = pct + '%';
   bar.classList.toggle('full', pct === 100);
   renderTimerBox();
+  renderTodayPlanned();
+}
+
+// траты по плану на сегодня (ежемесячные, чей день совпал с сегодняшним)
+function renderTodayPlanned() {
+  const box = $('todayPlanned');
+  if (!box) return;
+  const tDay = new Date().getDate();
+  const items = (state.finance && state.finance.monthly || []).filter(x => x.day === tDay);
+  if (!items.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  $('todayPlannedList').innerHTML = '<ul class="list">' + items.map(x =>
+    `<li>
+      <span class="task-text">📌 ${esc(x.name)}</span>
+      ${typeof x.amount === 'number' ? `<b class="muted" style="margin-left:auto">${fmtMoney(x.amount)}</b>` : ''}
+    </li>`).join('') + '</ul>';
 }
 
 /* ================= ТАЙМЕР ================= */
@@ -1744,8 +1764,8 @@ function addFinMonthly() {
   const name = $('mtName').value.trim();
   const amt = num($('mtAmount').value);
   const day = Math.floor(num($('mtDay').value));
-  if (!name || !amt || isNaN(amt) || isNaN(day) || day < 1 || day > 31) { $('mtName').focus(); return; }
-  state.finance.monthly.push({ id: uid(), name, amount: amt, day });
+  if (!name || isNaN(day) || day < 1 || day > 31) { $('mtName').focus(); return; }
+  state.finance.monthly.push({ id: uid(), name, amount: isNaN(amt) ? null : amt, day });
   $('mtName').value = ''; $('mtAmount').value = ''; $('mtDay').value = '';
   saveState(); renderFinance();
 }
@@ -1756,10 +1776,9 @@ function delFinMonthly(id) {
 function addFinUpcoming() {
   const name = $('upName').value.trim();
   const amt = num($('upAmount').value);
-  const date = parseDateInput($('upDate').value);
-  if (!name || !amt || isNaN(amt) || !date) { $('upName').focus(); return; }
-  state.finance.upcoming.push({ id: uid(), name, amount: amt, date, paid: false });
-  $('upName').value = ''; $('upAmount').value = ''; $('upDate').value = '';
+  if (!name) { $('upName').focus(); return; }
+  state.finance.upcoming.push({ id: uid(), name, amount: isNaN(amt) ? null : amt, paid: false });
+  $('upName').value = ''; $('upAmount').value = '';
   saveState(); renderFinance();
 }
 function delFinUpcoming(id) {
@@ -1812,31 +1831,26 @@ function renderFinance() {
   }).join('') || '<p class="muted" style="font-size:13px">Акций пока нет.</p>';
 
   // ежемесячные
-  const mtTotal = f.monthly.reduce((s, x) => s + x.amount, 0);
+  const mtTotal = f.monthly.reduce((s, x) => s + (typeof x.amount === 'number' ? x.amount : 0), 0);
   $('finMonthlyTotal').textContent = 'итого ' + fmtMoney(mtTotal) + '/мес';
   $('finMonthly').innerHTML = f.monthly.map(x => `
     <div class="fin-row">
       <input class="fin-input fin-day" type="text" data-field="monthly" data-prop="day" data-id="${x.id}" value="${x.day}" title="День месяца">
       <input class="fin-input fin-comment" data-field="monthly" data-prop="name" data-id="${x.id}" value="${esc(x.name)}" title="Название">
-      <input class="fin-input fin-amount neg" type="text" data-field="monthly" data-prop="amount" data-id="${x.id}" value="${x.amount}" title="Сумма">
+      <input class="fin-input fin-amount neg" type="text" data-field="monthly" data-prop="amount" data-id="${x.id}" value="${x.amount == null ? '' : x.amount}" placeholder="Сумма (необязательно)" title="Сумма">
       <button class="ic del" data-act="finDelMonthly" data-id="${x.id}" title="Удалить">✕</button>
     </div>`).join('') || '<p class="muted" style="font-size:13px">Ничего не добавлено.</p>';
 
-  // предстоящие разовые
-  const tKey = todayKey();
-  const in7 = datePlus(7);
-  const sorted = f.upcoming.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  $('finUpcoming').innerHTML = sorted.map(x => {
-    const soon = !x.paid && x.date >= tKey && x.date <= in7;
-    return `<div class="fin-row ${x.paid ? 'paid' : ''} ${soon ? 'soon' : ''}">
-      <input class="fin-input fin-date" type="text" data-field="upcoming" data-prop="date" data-id="${x.id}" value="${esc(x.date)}" placeholder="ГГГГ-ММ-ДД" title="Дата">
+  // разовые траты
+  $('finUpcoming').innerHTML = f.upcoming.map(x => `
+    <div class="fin-row ${x.paid ? 'paid' : ''}">
       <input class="fin-input fin-comment" data-field="upcoming" data-prop="name" data-id="${x.id}" value="${esc(x.name)}" ${x.paid ? 'disabled' : ''} placeholder="Что за трата" title="Название">
-      <input class="fin-input fin-amount ${x.paid ? '' : 'neg'}" type="text" data-field="upcoming" data-prop="amount" data-id="${x.id}" value="${x.amount}" title="Сумма">
-      ${x.paid ? '<span class="tag">оплачено</span>' : (soon ? '<span class="tag warn">скоро</span>' : '')}
+      <input class="fin-input fin-amount ${x.paid ? '' : 'neg'}" type="text" data-field="upcoming" data-prop="amount" data-id="${x.id}" value="${x.amount == null ? '' : x.amount}" placeholder="Сумма" title="Сумма">
+      ${x.paid ? '<span class="tag">оплачено</span>' : ''}
       <button class="ic" data-act="toggleFinPaid" data-id="${x.id}" title="${x.paid ? 'Вернуть в отложенные' : 'Отметить оплаченным'}">${x.paid ? '↩' : '✓'}</button>
       <button class="ic del" data-act="finDelUpcoming" data-id="${x.id}" title="Удалить">✕</button>
     </div>`;
-  }).join('') || '<p class="muted" style="font-size:13px">Предстоящих трат нет.</p>';
+  }).join('') || '<p class="muted" style="font-size:13px">Разовых трат пока нет.</p>';
 }
 
 /* общее сохранение полей финансов (инпуты прямо в записях) */
@@ -1852,8 +1866,12 @@ function applyFinField(el) {
   if (!t) return false;
   let v;
   if (t.numeric) {
-    v = t.prop === 'day' ? Math.floor(num(t.raw)) : num(t.raw);
-    if (isNaN(v)) return false;
+    const raw = String(t.raw).trim();
+    if (raw === '') v = null; // сумма необязательна
+    else {
+      v = t.prop === 'day' ? Math.floor(num(raw)) : num(raw);
+      if (isNaN(v)) return false;
+    }
   } else if (t.cls === 'upcoming' && t.prop === 'date') {
     v = parseDateInput(t.raw);
   } else v = t.raw;
