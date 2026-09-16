@@ -279,13 +279,6 @@
   .fin-day{width:52px;text-align:center}
   .fin-input.pos{color:var(--good)}
   .fin-input.neg{color:var(--bad)}
-  .donut-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
-  #financeLegend{display:flex;flex-direction:column;gap:8px;font-size:14px}
-  .dl-row{display:flex;align-items:center;gap:10px}
-  .dl-dot{width:12px;height:12px;border-radius:50%;flex:none}
-  .dl-pct{font-weight:800;margin-left:6px}
-  .dt-cap{fill:var(--muted);font-size:11px;font-weight:700}
-  .dt-total{fill:var(--text);font-size:15px;font-weight:800}
   @media (max-width:860px){.today-cal-row{grid-template-columns:1fr}}
   details.howto{margin-top:10px;font-size:13px;color:var(--muted);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
   details.howto summary{cursor:pointer;font-weight:600;color:var(--text)}
@@ -452,14 +445,6 @@
   <section id="tab-finance" class="tab">
     <h2 class="page-title">Финансы</h2>
     <p class="sub">Накопления, акции, ежемесячные и предстоящие разовые траты.</p>
-
-    <div class="card">
-      <h3>📊 Накопления и акции</h3>
-      <div class="donut-wrap">
-        <div id="financeChart" style="min-width:170px"></div>
-        <div id="financeLegend"></div>
-      </div>
-    </div>
 
     <div class="card">
       <h3>💸 Накопления <span class="tag" id="finEntriesCount"></span></h3>
@@ -1657,44 +1642,6 @@ function fmtMoney(n) {
 function finBalance() {
   return state.finance.balanceEntries.reduce((s, e) => s + e.amount, 0);
 }
-function renderFinanceChart() {
-  const bal = Math.max(0, finBalance());
-  const stocks = state.finance.stocks.reduce((s, x) => s + x.cur * x.count, 0);
-  const total = bal + stocks;
-  const parts = [
-    { label: 'Накопления', value: bal, color: '#ff7a18' },
-    { label: 'Акции', value: stocks, color: '#3fb950' }
-  ];
-  const box = $('financeChart');
-  const leg = $('financeLegend');
-  if (!total) {
-    box.innerHTML = '<p class="muted" style="font-size:13px;padding:8px 0">Добавьте записи в накопления или акции — здесь появится диаграмма.</p>';
-    leg.innerHTML = '';
-    return;
-  }
-  const C = 2 * Math.PI * 60;
-  let off = 0, arcs = '';
-  parts.forEach(p => {
-    if (p.value <= 0) return;
-    const frac = p.value / total;
-    const dash = frac * C;
-    arcs += `<circle r="60" cx="80" cy="80" fill="none" stroke="${p.color}" stroke-width="26"
-      stroke-dasharray="${dash} ${C - dash}" stroke-dashoffset="${-off}" transform="rotate(-90 80 80)">
-      <title>${esc(p.label)}: ${Math.round(frac * 100)}%</title></circle>`;
-    off += dash;
-  });
-  box.innerHTML = `<svg viewBox="0 0 160 160" width="170" height="170" role="img" aria-label="Соотношение накоплений и акций">${arcs}
-    <text x="80" y="64" text-anchor="middle" class="dt-cap">Всего</text>
-    <text x="80" y="90" text-anchor="middle" class="dt-total">${fmtMoney(total)}</text>
-  </svg>`;
-  leg.innerHTML = parts.filter(p => p.value > 0).map(p => `
-    <div class="dl-row">
-      <span class="dl-dot" style="background:${p.color}"></span>
-      <span>${esc(p.label)}</span>
-      <span class="muted">${fmtMoney(p.value)}</span>
-      <span class="dl-pct">${Math.round(p.value / total * 100)}%</span>
-    </div>`).join('');
-}
 function datePlus(days) {
   const d = new Date(); d.setDate(d.getDate() + days); return fmtDay(d);
 }
@@ -1851,7 +1798,6 @@ function toggleFinPaid(id) {
 
 function renderFinance() {
   const f = state.finance;
-  renderFinanceChart();
 
   // накопления
   const bal = finBalance();
@@ -1871,8 +1817,7 @@ function renderFinance() {
   const curSum = f.stocks.reduce((s, x) => s + x.cur * x.count, 0);
   const pl = curSum - invest;
   $('finStocksHead').innerHTML = `
-    <div class="fin-bal ${pl >= 0 ? 'pos' : 'neg'}">${pl >= 0 ? '+' : '−'}${fmtMoney(Math.abs(pl))}</div>
-    <div class="muted" style="font-size:12px;margin:2px 0 10px">прибыль/убыток по акциям (стоимость сейчас − вложения)</div>
+    <div class="fin-bal ${pl >= 0 ? 'pos' : 'neg'}" style="margin:0 0 8px">${pl >= 0 ? '+' : '−'}${fmtMoney(Math.abs(pl))}</div>
     <div class="st-summary">
       <span>Вложено: <b>${fmtMoney(invest)}</b></span>
       <span>Сейчас: <b>${fmtMoney(curSum)}</b></span>
