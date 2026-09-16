@@ -80,9 +80,10 @@
   ul.list>li:hover{background:rgba(255,255,255,.02);border-radius:10px}
   ul.list input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);cursor:pointer;flex:none}
   .task-text{flex:1;font-size:15px;word-break:break-word}
-  .task-text[data-act="editTask"]{cursor:pointer}
-  .task-text[data-act="editTask"]:hover{color:var(--accent2)}
-  .task-edit{flex:1;min-width:0}
+  .task-edit-in{flex:1;min-width:0;font:inherit;font-size:15px;color:var(--text);background:transparent;border:1px solid transparent;border-radius:7px;padding:2px 6px;outline:none}
+  .task-edit-in:hover{border-color:var(--border)}
+  .task-edit-in:focus{border-color:var(--accent);background:var(--bg)}
+  li.done .task-edit-in{text-decoration:line-through;color:var(--muted)}
   li.done .task-text{text-decoration:line-through;color:var(--muted)}
   li.blocked{opacity:.5}
   li.blocked .task-text{color:var(--muted);cursor:not-allowed}
@@ -712,31 +713,7 @@ function toggleTaskLock(id) {
   t.locked = !t.locked;
   saveState(); renderToday(); renderTasks();
 }
-function editTask(id) {
-  const lst = listOfTask(id);
-  const t = lst && lst.tasks.find(x => x.id === id);
-  const el = document.querySelector(`.task-text[data-id="${id}"]`);
-  if (!t || !el) return;
-  const inp = document.createElement('input');
-  inp.type = 'text';
-  inp.className = 'lname-input task-edit';
-  inp.value = t.text;
-  el.innerHTML = '';
-  el.appendChild(inp);
-  inp.focus(); inp.select();
-  let finished = false;
-  const commit = keep => {
-    if (finished) return;
-    finished = true;
-    if (keep) { const v = inp.value.trim(); if (v) t.text = v; }
-    saveState(); renderToday(); renderTasks();
-  };
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); commit(true); }
-    else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
-  });
-  inp.addEventListener('blur', () => commit(true));
-}
+function editTask(id) { /* не используется — текст редактируется инпутами напрямую */ }
 
 /* выполненные задачи первого списка удаляются в 00:00 */
 function cleanupFirstListDone() {
@@ -1426,7 +1403,7 @@ function taskRowHTML(t, compact) {
   return `<li class="task-row ${t.done ? 'done' : ''} ${bl ? 'blocked' : ''}" data-id="${t.id}" ${compact ? '' : 'draggable="true"'}>
     ${compact ? '' : `<span class="grip" title="Перетащите, чтобы переместить">≣</span>`}
     <input type="checkbox" data-act="toggleTask" data-id="${t.id}" ${t.done ? 'checked' : ''} ${bl ? 'disabled' : ''}>
-    <span class="task-text" ${compact ? '' : `data-act="editTask" data-id="${t.id}" title="${bl ? 'Залочена: выполните остальные задачи в категории' : 'Клик — изменить задачу'}"`}>${esc(t.text)}</span>
+    <input class="task-edit-in" type="text" data-field="task" data-id="${t.id}" value="${esc(t.text)}" placeholder="Текст задачи…" ${bl ? 'title="Залочена: выполните остальные задачи в категории"' : ''}>
     ${lockInd}
     ${compact ? '' : `<span class="ctrl-row"><button class="ic del" data-act="delTask" data-id="${t.id}" title="Удалить">✕</button></span>`}
   </li>`;
@@ -1885,6 +1862,22 @@ function applyFinField(el) {
 }
 function finFieldLive(el) { if (applyFinField(el)) scheduleSave(); }
 function finFieldCommit(el) { if (applyFinField(el)) { saveState(); renderFinance(); } }
+/* поля задач — редактирование текста как в финансах */
+function taskFieldLive(el) {
+  const lst = listOfTask(el.dataset.id);
+  const t = lst && lst.tasks.find(x => x.id === el.dataset.id);
+  if (!t) return;
+  t.text = el.value;
+  scheduleSave();
+}
+function taskFieldCommit(el) {
+  const lst = listOfTask(el.dataset.id);
+  const t = lst && lst.tasks.find(x => x.id === el.dataset.id);
+  if (!t) return;
+  const v = el.value.trim();
+  t.text = v || t.text;
+  saveState(); renderToday(); renderTasks();
+}
 
 /* -------- календарь: рендер -------- */
 function renderGcalSetup() {
@@ -2118,7 +2111,6 @@ document.addEventListener('click', e => {
     case 'tab': showTab(t.dataset.tab); break;
     case 'delTask': deleteTask(t.dataset.id); break;
     case 'lockTask': toggleTaskLock(t.dataset.id); break;
-    case 'editTask': editTask(t.dataset.id); break;
     case 'delList': deleteList(t.dataset.id); break;
     case 'moveList': moveList(t.dataset.id, Number(t.dataset.dir)); break;
     case 'renameList': renameList(t.dataset.id); break;
@@ -2177,6 +2169,8 @@ document.addEventListener('click', e => {
 });
 
 document.addEventListener('change', e => {
+  const task = e.target.closest('[data-field="task"]');
+  if (task) { taskFieldCommit(task); return; }
   const fin = e.target.closest('[data-field]');
   if (fin) { finFieldCommit(fin); return; }
   const t = e.target.closest('[data-act]');
@@ -2315,6 +2309,8 @@ document.addEventListener('input', e => {
   const note = e.target.closest('.note textarea');
   if (note) noteInput(note.closest('.note').dataset.id);
   if (e.target && e.target.id === 'evNoteArea') evNoteInput();
+  const task = e.target.closest('[data-field="task"]');
+  if (task) taskFieldLive(task);
   const fin = e.target.closest('[data-field]');
   if (fin) finFieldLive(fin);
 });
