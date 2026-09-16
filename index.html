@@ -261,7 +261,13 @@
   .fin-row.paid{opacity:.5}
   .fin-row.paid .fin-comment{text-decoration:line-through}
   .fin-row.soon{border-color:var(--warn)}
-  .st-row{display:flex;align-items:center;gap:10px;padding:7px 9px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;font-size:13px}
+  .st-row{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;font-size:14px;cursor:pointer;transition:.12s}
+  .st-row:hover{border-color:var(--accent)}
+  .sm-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+  .sm-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  .sm-inp{width:100%;padding:8px 10px;font-size:14px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;color:var(--text);font:inherit;outline:none}
+  .sm-inp:focus{border-color:var(--accent)}
+  .sm-static{padding:8px 10px;font-size:14px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:9px}
   .st-name{flex:1;min-width:0;font-weight:600;word-break:break-word}
   .st-cur{cursor:pointer;border-bottom:1px dashed var(--muted);padding:0 2px;white-space:nowrap}
   .st-cur:hover{color:var(--accent2)}
@@ -515,6 +521,13 @@
 </div>
 
 <div class="timerfloat" id="timerFloat" style="display:none" title="Нажмите, чтобы остановить таймер">⏱ <span id="timerFloatTime"></span></div>
+
+<div class="modal-ov" id="stockModal" style="display:none">
+  <div class="modal">
+    <button class="evm-close ic" data-act="stockClose" aria-label="Закрыть">✕</button>
+    <div id="stockModalBody"></div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -1670,6 +1683,64 @@ function addFinStock() {
 function delFinStock(id) {
   state.finance.stocks = state.finance.stocks.filter(s => s.id !== id);
   saveState(); renderFinance();
+  closeStockModal();
+}
+
+/* модалка акции: детали по клику на карточку */
+var modalStockId = null;
+function openStockModal(id) {
+  modalStockId = id;
+  $('stockModal').style.display = 'flex';
+  renderStockModal();
+}
+function closeStockModal() {
+  $('stockModal').style.display = 'none';
+  modalStockId = null;
+}
+function renderStockModal() {
+  const s = state.finance.stocks.find(x => x.id === modalStockId);
+  const body = $('stockModalBody');
+  if (!s) { body.innerHTML = '<p class="muted">Акция не найдена.</p>'; return; }
+  const invested = s.buy * s.count;
+  const worth = s.cur * s.count;
+  const pl = worth - invested;
+  body.innerHTML = `
+    <h3 class="evm-title">📈 ${esc(s.name)}</h3>
+    <div class="sm-grid">
+      <label>Название / тикер
+        <input class="fin-input sm-inp" data-field="stock" data-prop="name" data-id="${s.id}" value="${esc(s.name)}">
+      </label>
+      <label>Количество
+        <input class="fin-input sm-inp" type="text" data-field="stock" data-prop="count" data-id="${s.id}" value="${s.count}">
+      </label>
+      <label>Цена покупки
+        <input class="fin-input sm-inp" type="text" data-field="stock" data-prop="buy" data-id="${s.id}" value="${s.buy}">
+      </label>
+      <label>Текущая цена <span class="muted">(авто)</span>
+        <div class="sm-static">${fmtMoney(s.cur)}</div>
+      </label>
+    </div>
+    <div class="st-summary" style="margin-top:14px">
+      <span>Вложено: <b>${fmtMoney(invested)}</b></span>
+      <span>Сейчас: <b>${fmtMoney(worth)}</b></span>
+      <span class="${pl >= 0 ? 'pos' : 'neg'}">P/L: <b>${pl >= 0 ? '+' : ''}${fmtMoney(pl)}</b></span>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+      <button class="btn btn-ghost" data-act="refreshOneStock" data-id="${s.id}">⟳ Обновить цену</button>
+      <button class="btn btn-ghost" data-act="delStock" data-id="${s.id}" style="color:var(--bad)">Удалить</button>
+    </div>`;
+}
+async function refreshOneStock(id) {
+  const s = state.finance.stocks.find(x => x.id === id);
+  if (!s) return;
+  try {
+    const info = await fetchPriceInfo(s.name);
+    if (!info || !info.price || info.price <= 0) throw new Error('нет цены');
+    let fx = 1;
+    try { const r = await fetchUsdRub(); if (r && r > 0) fx = r; } catch (e) {}
+    s.cur = info.usd ? info.price * fx : info.price;
+    saveState(); renderFinance(); renderStockModal();
+  } catch (e) { alert('Не удалось обновить цену: ' + e.message); }
 }
 
 /* ---------- автообновление цен акций ---------- */
@@ -1823,13 +1894,9 @@ function renderFinance() {
     </div>`;
   $('finStocks').innerHTML = f.stocks.map(s => {
     const pl2 = (s.cur - s.buy) * s.count;
-    return `<div class="st-row">
-      <input class="fin-input st-name" data-field="stock" data-prop="name" data-id="${s.id}" value="${esc(s.name)}" title="Название или тикер — по нему обновляется цена (AAPL, SBER.ME, BTC)">
-      <input class="fin-input fin-count" type="text" data-field="stock" data-prop="count" data-id="${s.id}" value="${s.count}" title="Количество">
-      <input class="fin-input fin-smal" type="text" data-field="stock" data-prop="buy" data-id="${s.id}" value="${s.buy}" title="Цена покупки">
-      <span class="st-cur" title="Текущая цена — обновляется автоматически">${fmtMoney(s.cur)}</span>
-      <span class="fin-amt ${pl2 >= 0 ? 'pos' : 'neg'}">${pl2 >= 0 ? '+' : ''}${fmtMoney(pl2)}</span>
-      <button class="ic del" data-act="finDelStock" data-id="${s.id}" title="Удалить">✕</button>
+    return `<div class="st-row" data-act="openStock" data-id="${s.id}" title="Нажмите, чтобы увидеть детали">
+      <span class="st-name">${esc(s.name)}</span>
+      <span class="fin-amt ${pl2 >= 0 ? 'pos' : 'neg'}">${pl2 >= 0 ? '+' : '−'}${fmtMoney(Math.abs(pl2))}</span>
     </div>`;
   }).join('') || '<p class="muted" style="font-size:13px">Акций пока нет.</p>';
 
@@ -1883,7 +1950,7 @@ function applyFinField(el) {
   return true;
 }
 function finFieldLive(el) { if (applyFinField(el)) scheduleSave(); }
-function finFieldCommit(el) { if (applyFinField(el)) { saveState(); renderFinance(); } }
+function finFieldCommit(el) { if (applyFinField(el)) { saveState(); renderFinance(); if ($('stockModal') && $('stockModal').style.display === 'flex') renderStockModal(); } }
 /* поля задач — редактирование текста как в финансах */
 function taskFieldLive(el) {
   const lst = listOfTask(el.dataset.id);
@@ -2187,6 +2254,10 @@ document.addEventListener('click', e => {
     case 'calDayToday': setCalDay(todayKey()); break;
     case 'openEvent': openEventModal(t.dataset.id); break;
     case 'evClose': closeEvModal(); break;
+    case 'openStock': openStockModal(t.dataset.id); break;
+    case 'stockClose': closeStockModal(); break;
+    case 'refreshOneStock': refreshOneStock(t.dataset.id); break;
+    case 'delStock': if (confirm('Удалить эту акцию?')) delFinStock(t.dataset.id); break;
   }
 });
 
@@ -2213,7 +2284,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'listNameInput') addList();
   if (e.key === 'Enter' && document.activeElement && document.activeElement.id === 'noteListNameInput') addNoteCategory();
   if (e.key === 'Enter' && document.activeElement && document.activeElement.classList.contains('task-input-local')) addTask(document.activeElement.dataset.list);
-  if (e.key === 'Escape') closeEvModal();
+  if (e.key === 'Escape') { closeEvModal(); closeStockModal(); }
 });
 
 /* drag & drop привычек (перемещение порядка) */
@@ -2339,6 +2410,9 @@ document.addEventListener('input', e => {
 
 $('evModal').addEventListener('click', e => {
   if (e.target.id === 'evModal') closeEvModal();
+});
+$('stockModal').addEventListener('click', e => {
+  if (e.target.id === 'stockModal') closeStockModal();
 });
 
 /* ================= helpers привычек ================= */
