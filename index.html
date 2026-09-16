@@ -478,14 +478,13 @@
 
     <div class="card">
       <h3>📈 Акции
-        <button class="btn btn-ghost" data-act="refreshPrices" style="font-size:12px;padding:5px 12px">⟳ Обновить цены</button>
+        <button class="btn btn-ghost" data-act="refreshPrices" style="font-size:12px;padding:5px 12px" title="Обновить сейчас (в фоне — автоматически каждый час)">⟳ Обновить цены</button>
       </h3>
       <div id="finStocksHead"></div>
       <div class="add-row">
         <input type="text" id="stName" placeholder="Название или тикер (AAPL, SBER.ME, BTC)" autocomplete="off" style="flex:1">
         <input type="text" id="stCount" placeholder="Кол-во" autocomplete="off" style="width:80px">
         <input type="text" id="stBuy" placeholder="Цена покупки" autocomplete="off" style="width:110px">
-        <input type="text" id="stCur" placeholder="Тек. цена" autocomplete="off" style="width:100px">
         <button class="btn" data-act="finAddStock">Добавить</button>
       </div>
       <div id="finStocks" class="stack"></div>
@@ -1716,9 +1715,8 @@ function addFinStock() {
   const count = num($('stCount').value);
   const buy = num($('stBuy').value);
   if (!name || !count || isNaN(buy)) { $('stName').focus(); return; }
-  const cur = num($('stCur').value);
-  state.finance.stocks.push({ id: uid(), name, count, buy, cur: isNaN(cur) ? buy : cur });
-  $('stName').value = ''; $('stCount').value = ''; $('stBuy').value = ''; $('stCur').value = '';
+  state.finance.stocks.push({ id: uid(), name, count, buy, cur: buy });
+  $('stName').value = ''; $('stCount').value = ''; $('stBuy').value = '';
   saveState(); renderFinance();
 }
 function delFinStock(id) {
@@ -1761,9 +1759,10 @@ async function fetchYahooJson(sym) {
   }
   throw lastErr || new Error('не удалось получить ответ');
 }
-async function fetchPrice(sym) {
+async function fetchPriceInfo(sym) {
   const up = String(sym || '').trim().toUpperCase().replace(/\s+/g, '');
   if (!up) throw new Error('пустой тикер');
+  // 1) крипта — CoinGecko
   const coin = CRYPTO_MAP[up];
   if (coin) {
     const r = await fetchWithTimeout('https://api.coingecko.com/api/v3/simple/price?ids=' + coin + '&vs_currencies=usd');
@@ -1771,9 +1770,21 @@ async function fetchPrice(sym) {
     const j = await r.json();
     const p = j[coin] && j[coin].usd;
     if (!p) throw new Error('нет цены');
-    return p;
+    return { price: p, usd: true };
   }
-  return await fetchYahooJson(up);
+  // 2) российские акции — МОЕХ (цена сразу в рублях)
+  try {
+    const r = await fetchWithTimeout('https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities/' + encodeURIComponent(up) + '.json?iss.meta=off&iss.only=marketdata&marketdata.columns=SECID,LAST');
+    if (r.ok) {
+      const j = await r.json();
+      const rows = j && j.marketdata && j.marketdata.data;
+      const val = rows && rows[0] && rows[0][1];
+      if (typeof val === 'number' && val > 0) return { price: val, usd: false };
+    }
+  } catch (e) { /* пробуем дальше */ }
+  // 3) зарубежные — Yahoo (в долларах, пересчёт в ₽ по курсу)
+  const p = await fetchYahooJson(up);
+  return { price: p, usd: true };
 }
 async function fetchUsdRub() {
   try { return await fetchYahooJson('USDRUB%3DX'); } catch (e) { return null; }
@@ -1789,8 +1800,11 @@ async function refreshStockPrices() {
   const failed = [];
   for (const s of stocks) {
     try {
-      const p = await fetchPrice(s.name);
-      if (p && p > 0) { s.cur = p * fx; updated++; }
+      const info = await fetchPriceInfo(s.name);
+      if (info && info.price && info.price > 0) {
+        s.cur = info.usd ? info.price * fx : info.price;
+        updated++;
+      }
       else failed.push(s.name);
     } catch (e) { failed.push(s.name); }
   }
@@ -1867,7 +1881,7 @@ function renderFinance() {
       <input class="fin-input st-name" data-field="stock" data-prop="name" data-id="${s.id}" value="${esc(s.name)}" title="Название или тикер — по нему обновляется цена (AAPL, SBER.ME, BTC)">
       <input class="fin-input fin-count" type="text" data-field="stock" data-prop="count" data-id="${s.id}" value="${s.count}" title="Количество">
       <input class="fin-input fin-smal" type="text" data-field="stock" data-prop="buy" data-id="${s.id}" value="${s.buy}" title="Цена покупки">
-      <input class="fin-input fin-smal" type="text" data-field="stock" data-prop="cur" data-id="${s.id}" value="${s.cur}" title="Текущая цена">
+      <span class="st-cur" title="Текущая цена — обновляется автоматически">${fmtMoney(s.cur)}</span>
       <span class="fin-amt ${pl2 >= 0 ? 'pos' : 'neg'}">${pl2 >= 0 ? '+' : ''}${fmtMoney(pl2)}</span>
       <button class="ic del" data-act="finDelStock" data-id="${s.id}" title="Удалить">✕</button>
     </div>`;
@@ -2382,6 +2396,7 @@ renderAll();
 showTab('today');
 tick();
 setInterval(tick, 500);
+setInterval(() => { if (state.finance && state.finance.stocks.length) refreshStockPrices(); }, 3600000);
 const now = new Date();
 if (state.gcal.clientId && state.gcal.token) {
   ensureEvents(now.getFullYear(), now.getMonth());
