@@ -495,7 +495,7 @@
     </div>
 
     <div class="card">
-      <h3>Разовые траты</h3>
+      <h3>🧾 Разовые траты</h3>
       <div class="add-row">
         <input type="text" id="upName" placeholder="Что за трата" autocomplete="off" style="flex:1">
         <input type="text" id="upAmount" placeholder="Сумма" autocomplete="off" style="width:110px">
@@ -1836,7 +1836,8 @@ function renderFinance() {
   // ежемесячные
   const mtTotal = f.monthly.reduce((s, x) => s + (typeof x.amount === 'number' ? x.amount : 0), 0);
   $('finMonthlyTotal').textContent = 'итого ' + fmtMoney(mtTotal) + '/мес';
-  $('finMonthly').innerHTML = f.monthly.map(x => `
+  const monthlySorted = f.monthly.slice().sort((a, b) => (a.day || 99) - (b.day || 99));
+  $('finMonthly').innerHTML = monthlySorted.map(x => `
     <div class="fin-row">
       <input class="fin-input fin-day" type="text" data-field="monthly" data-prop="day" data-id="${x.id}" value="${x.day}" title="День месяца">
       <input class="fin-input fin-comment" data-field="monthly" data-prop="name" data-id="${x.id}" value="${esc(x.name)}" title="Название">
