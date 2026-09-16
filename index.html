@@ -477,9 +477,7 @@
     </div>
 
     <div class="card">
-      <h3>📈 Акции
-        <button class="btn btn-ghost" data-act="refreshPrices" style="font-size:12px;padding:5px 12px" title="Обновить сейчас (в фоне — автоматически каждый час)">⟳ Обновить цены</button>
-      </h3>
+      <h3>📈 Акции</h3>
       <div id="finStocksHead"></div>
       <div class="add-row">
         <input type="text" id="stName" placeholder="Название или тикер (AAPL, SBER.ME, BTC)" autocomplete="off" style="flex:1">
@@ -488,7 +486,10 @@
         <button class="btn" data-act="finAddStock">Добавить</button>
       </div>
       <div id="finStocks" class="stack"></div>
-      <p class="muted" id="stRefreshStatus" style="font-size:12px;margin-top:10px"></p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px">
+        <button class="btn btn-ghost" data-act="refreshPrices" style="font-size:12px;padding:6px 12px" title="Обновить сейчас (в фоне — автоматически каждый час)">⟳ Обновить цены</button>
+        <span class="muted" id="stRefreshStatus" style="font-size:12px"></span>
+      </div>
     </div>
 
     <div class="card">
@@ -1870,10 +1871,11 @@ function renderFinance() {
   const curSum = f.stocks.reduce((s, x) => s + x.cur * x.count, 0);
   const pl = curSum - invest;
   $('finStocksHead').innerHTML = `
+    <div class="fin-bal ${pl >= 0 ? 'pos' : 'neg'}">${pl >= 0 ? '+' : '−'}${fmtMoney(Math.abs(pl))}</div>
+    <div class="muted" style="font-size:12px;margin:2px 0 10px">прибыль/убыток по акциям (стоимость сейчас − вложения)</div>
     <div class="st-summary">
       <span>Вложено: <b>${fmtMoney(invest)}</b></span>
       <span>Сейчас: <b>${fmtMoney(curSum)}</b></span>
-      <span class="${pl >= 0 ? 'pos' : 'neg'}">P/L: <b>${pl >= 0 ? '+' : ''}${fmtMoney(pl)}</b></span>
     </div>`;
   $('finStocks').innerHTML = f.stocks.map(s => {
     const pl2 = (s.cur - s.buy) * s.count;
