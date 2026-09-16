@@ -645,7 +645,10 @@ if (!state.calDay) state.calDay = todayKey();
 saveState();
 
 /* ================= логика привычек ================= */
-function habitDone(id, key) { return !!(state.habits.find(h => h.id === id) || {}).done?.[key]; }
+function habitDone(id, key) {
+  const h = state.habits.find(x => x.id === id);
+  return !!(h && h.done && h.done[key]);
+}
 function toggleHabit(id, key) {
   const h = state.habits.find(x => x.id === id);
   if (!h) return;
@@ -1849,8 +1852,8 @@ function renderFinance() {
       ${x.paid ? '<span class="tag">оплачено</span>' : ''}
       <button class="ic" data-act="toggleFinPaid" data-id="${x.id}" title="${x.paid ? 'Вернуть в отложенные' : 'Отметить оплаченным'}">${x.paid ? '↩' : '✓'}</button>
       <button class="ic del" data-act="finDelUpcoming" data-id="${x.id}" title="Удалить">✕</button>
-    </div>`;
-  }).join('') || '<p class="muted" style="font-size:13px">Разовых трат пока нет.</p>';
+    </div>`
+  ).join('') || '<p class="muted" style="font-size:13px">Разовых трат пока нет.</p>';
 }
 
 /* общее сохранение полей финансов (инпуты прямо в записях) */
