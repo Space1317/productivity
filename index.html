@@ -2435,7 +2435,17 @@ renderAll();
 showTab('today');
 tick();
 setInterval(tick, 500);
-setInterval(() => { if (state.finance && state.finance.stocks.length) refreshStockPrices(); }, 3600000);
+// обновление цен акций — раз в день в 13:00 (чтобы не злить API)
+function scheduleDailyPrices() {
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 13, 0, 5);
+  if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
+  setTimeout(() => {
+    if (state.finance && state.finance.stocks.length) refreshStockPrices();
+    scheduleDailyPrices();
+  }, next.getTime() - now.getTime());
+}
+scheduleDailyPrices();
 const now = new Date();
 if (state.gcal.clientId && state.gcal.token) {
   ensureEvents(now.getFullYear(), now.getMonth());
