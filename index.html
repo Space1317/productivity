@@ -2226,6 +2226,7 @@ document.addEventListener('click', e => {
     case 'toggleFinPaid': toggleFinPaid(t.dataset.id); break;
     case 'addListBtn': addList(); break;
     case 'delHabit': state.habits = state.habits.filter(h => h.id !== t.dataset.id); saveState(); renderToday(); renderHabits(); break;
+    case 'toggleHabit': toggleHabit(t.dataset.id, t.dataset.day); break;
     case 'addTaskBtn': addTask(t.dataset.list); break;
     case 'addHabitBtn': addHabit(); break;
     case 'addNoteBtn': addNote(t.dataset.list); break;
