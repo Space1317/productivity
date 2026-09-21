@@ -59,7 +59,7 @@
   .progress .fill.full{background:linear-gradient(135deg,#2ea043,#56d364)}
   .add-row{display:flex;gap:10px;margin-bottom:14px}
   .add-row input{flex:1}
-  input[type=text],input[type=time],input[type=date],textarea{
+  input[type=text],input[type=time],textarea{
     font:inherit;color:var(--text);background:var(--bg2);border:1px solid var(--border);
     border-radius:10px;padding:9px 12px;outline:none;transition:border-color .15s;
   }
@@ -409,15 +409,6 @@
     </div>
 
     <div class="card">
-      <h3>🗓 Отметить за день</h3>
-      <div class="add-row">
-        <input type="date" id="habitDayInput" data-act="habitDaySet">
-        <span class="muted" id="habitDayInfo"></span>
-      </div>
-      <div id="habitDayList"></div>
-    </div>
-
-    <div class="card">
       <div class="add-row">
         <input type="text" id="habitInput" placeholder="Новая привычка…" autocomplete="off">
         <button class="btn" data-act="addHabitBtn">Добавить</button>
@@ -591,7 +582,6 @@ function defaults() {
       ] }
     ],
     habitMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
-    habitDayKey: todayKey(),
     timer: { label: '', durationMs: 0, endAt: 0 },
     finance: { balanceEntries: [], stocks: [], monthly: [], upcoming: [] },
     gcal: { clientId: '', token: null, tokenExpiry: 0, connected: false },
@@ -656,7 +646,6 @@ if (!Array.isArray(state.noteLists)) {
 state.noteLists.forEach(l => { if (!Array.isArray(l.notes)) l.notes = []; });
 delete state.notes;
 if (!state.habitMonth || typeof state.habitMonth.y === 'undefined') state.habitMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
-if (!state.habitDayKey) state.habitDayKey = todayKey();
 if (!state.timer || typeof state.timer.endAt === 'undefined') state.timer = { label: '', durationMs: 0, endAt: 0 };
 if (!state.finance || typeof state.finance !== 'object') state.finance = { balanceEntries: [], stocks: [], monthly: [], upcoming: [] };
 if (!Array.isArray(state.finance.balanceEntries)) state.finance.balanceEntries = [];
@@ -1531,7 +1520,6 @@ function renderHabits() {
   $('habitChart').innerHTML = svg;
 
   renderMonthStats();
-  renderHabitDayList();
 
   // список привычек (редактируемый + перетаскиваемый)
   let html = '';
@@ -1563,30 +1551,6 @@ function renderHabits() {
     </li>`;
   });
   $('habitList').innerHTML = html;
-}
-
-/* ---------- отметка привычек за произвольный день ---------- */
-function renderHabitDayList() {
-  const key = state.habitDayKey || todayKey();
-  const inp = $('habitDayInput');
-  if (inp) inp.value = key;
-  const [yy, mm, dd] = key.split('-').map(Number);
-  const wd = DOW_FULL[new Date(yy, mm - 1, dd).getDay()];
-  const info = $('habitDayInfo');
-  if (info) info.textContent = wd.charAt(0).toUpperCase() + wd.slice(1) + ', ' + dd + ' ' + MONTH_GEN[mm - 1];
-  const list = $('habitDayList');
-  if (!list) return;
-  if (!state.habits.length) { list.innerHTML = '<p class="muted" style="font-size:13px">Привычек пока нет.</p>'; return; }
-  const done = state.habits.filter(h => h.done[key]).length;
-  const rows = state.habits.map(h => {
-    const on = !!h.done[key];
-    return `<li class="${on ? 'done' : ''}">
-      <input type="checkbox" data-act="toggleHabit" data-id="${h.id}" data-day="${key}" ${on ? 'checked' : ''}>
-      <span class="task-text">${esc(h.name)}</span>
-    </li>`;
-  }).join('');
-  list.innerHTML = '<ul class="list">' + rows + '</ul>' +
-    '<p class="muted" style="font-size:12px;margin-top:8px">Отмечено: <b>' + done + '</b> из ' + state.habits.length + '</p>';
 }
 
 /* ---------- статистика привычек за месяц ---------- */
@@ -2313,7 +2277,6 @@ document.addEventListener('change', e => {
     updateEvDurPreview();
   }
   else if (act === 'evWhen') { updateEvDurPreview(); }
-  else if (act === 'habitDaySet') { state.habitDayKey = t.value || todayKey(); saveState(); renderHabits(); }
 });
 
 document.addEventListener('keydown', e => {
