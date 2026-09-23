@@ -497,6 +497,7 @@
     <div class="card">
       <h3>💵 Доллары <span class="tag" id="usdCount"></span></h3>
       <div id="usdSummary"></div>
+      <p class="muted" id="usdRateStatus" style="font-size:12px;margin-top:6px"></p>
       <div class="add-row" style="margin-top:8px">
         <input type="text" id="usdDate" placeholder="ГГГГ-ММ-ДД" autocomplete="off" style="width:120px">
         <input type="text" id="usdAmount" placeholder="Сколько $ (+/−)" autocomplete="off" style="width:130px">
@@ -1974,13 +1975,38 @@ async function fetchPriceInfo(sym) {
 async function fetchUsdRub() {
   try { return await fetchYahooJson('USDRUB%3DX'); } catch (e) { return null; }
 }
+async function fetchCbrUsdRate() {
+  const r = await fetchWithTimeout('https://www.cbr-xml-daily.ru/daily_json.js');
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  const v = j.Valute && j.Valute.USD && j.Valute.USD.Value;
+  if (typeof v !== 'number' || v <= 0) throw new Error('нет курса');
+  return v;
+}
+async function refreshUsdRate() {
+  const st = $('usdRateStatus');
+  if (st) st.textContent = 'Обновляю курс…';
+  let r = null;
+  try { r = await fetchCbrUsdRate(); }
+  catch (e) { try { r = await fetchUsdRub(); } catch (e2) {} }
+  if (r && r > 0) {
+    state.finance.usdRate = r;
+    state.finance.usdRateUpd = todayKey();
+    saveState(); renderFinance();
+    if (st) st.textContent = '✓ Курс обновлён: 1 $ = ' + r.toFixed(2) + ' ₽';
+    return true;
+  }
+  if (st) st.textContent = '⚠ Не удалось обновить курс. Проверьте интернет и попробуйте ещё раз.';
+  return false;
+}
 async function refreshStockPrices() {
   const stocks = state.finance.stocks;
   const st = $('stRefreshStatus');
   if (!stocks.length) { if (st) st.textContent = 'Сначала добавьте акции.'; return; }
   if (st) st.textContent = 'Обновляю цены…';
   let fx = 1;
-  try { const r = await fetchUsdRub(); if (r && r > 0) fx = r; } catch (e) {}
+  try { const r = await fetchCbrUsdRate(); if (r && r > 0) fx = r; }
+  catch (e) { try { const r2 = await fetchUsdRub(); if (r2 && r2 > 0) fx = r2; } catch (e2) {} }
   let updated = 0;
   const failed = [];
   for (const s of stocks) {
@@ -2046,13 +2072,6 @@ function addFinUsd() {
 function delFinUsd(id) {
   state.finance.usdEntries = state.finance.usdEntries.filter(e => e.id !== id);
   saveState(); renderFinance();
-}
-async function refreshUsdRate() {
-  try {
-    const r = await fetchUsdRub();
-    if (r && r > 0) { state.finance.usdRate = r; state.finance.usdRateUpd = todayKey(); saveState(); renderFinance(); return true; }
-    return false;
-  } catch (e) { return false; }
 }
 
 function renderFinance() {
