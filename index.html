@@ -289,6 +289,8 @@
   .fin-comment{flex:1}
   .fin-amount{width:110px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
   .fin-count{width:64px}
+  .fin-reps{width:104px;text-align:right}
+  .fin-sets{width:70px;text-align:right}
   .fin-smal{width:92px;text-align:right}
   .fin-day{width:52px;text-align:center}
   .fin-input.pos{color:var(--good)}
@@ -556,6 +558,7 @@
         <div class="add-row" style="margin-bottom:8px">
           <input type="text" id="trExName" placeholder="Упражнение (жим, присед…)" autocomplete="off" style="flex:1">
           <input type="text" id="trExSets" placeholder="Подходы" autocomplete="off" style="width:90px">
+          <input type="text" id="trExReps" placeholder="Повторений" autocomplete="off" style="width:110px">
           <input type="text" id="trExLoad" placeholder="Вес, кг" autocomplete="off" style="width:100px">
           <button class="btn btn-ghost" data-act="trAddEx">＋ Упражнение</button>
         </div>
@@ -717,8 +720,9 @@ if (!Array.isArray(state.sport.workouts)) state.sport.workouts = [];
 state.sport.workouts.forEach(w => {
   if (typeof w.dur === 'undefined' && typeof w.duration !== 'undefined') { w.dur = w.duration; delete w.duration; }
   if (!Array.isArray(w.exercises)) {
-    w.exercises = (w.type === 'Силовая' && (w.sets != null || w.load != null)) ? [{ name: 'Силовая', sets: w.sets == null ? null : w.sets, load: w.load == null ? null : w.load }] : [];
+    w.exercises = (w.type === 'Силовая' && (w.sets != null || w.load != null)) ? [{ name: 'Силовая', sets: w.sets == null ? null : w.sets, reps: null, load: w.load == null ? null : w.load }] : [];
   }
+  (w.exercises || []).forEach(ex => { if (typeof ex.reps === 'undefined') ex.reps = null; });
   delete w.sets; delete w.load;
 });
 if (typeof state.sport.weeklyGoal !== 'number') state.sport.weeklyGoal = 3;
@@ -2016,10 +2020,10 @@ function finFieldTarget(el) {
   if (!item) return null;
   if (cls === 'workout' && el.dataset.x != null && Array.isArray(item.exercises)) {
     const xi = parseInt(el.dataset.x, 10);
-    if (!item.exercises[xi]) item.exercises[xi] = { name: '', sets: null, load: null };
+    if (!item.exercises[xi]) item.exercises[xi] = { name: '', sets: null, reps: null, load: null };
     item = item.exercises[xi];
   }
-  return { item, prop, raw: el.value, cls, numeric: ['amount', 'count', 'buy', 'cur', 'day', 'weight', 'duration', 'sets', 'load', 'dur'].indexOf(prop) >= 0 };
+  return { item, prop, raw: el.value, cls, numeric: ['amount', 'count', 'buy', 'cur', 'day', 'weight', 'duration', 'sets', 'reps', 'load', 'dur'].indexOf(prop) >= 0 };
 }
 function applyFinField(el) {
   const t = finFieldTarget(el);
@@ -2079,7 +2083,7 @@ function renderTrDraft() {
   list.innerHTML = trDraft.map((ex, i) => `
     <div class="fin-row">
       <span class="fin-comment">${esc(ex.name || 'упражнение')}</span>
-      <span class="fin-amt">${ex.sets != null ? ex.sets : '—'} × ${ex.load != null ? ex.load + ' кг' : '—'}</span>
+      <span class="fin-amt">${ex.sets != null ? ex.sets + ' подх. × ' : ''}${ex.reps != null ? ex.reps + ' повт.' : ''}${ex.load != null ? ' × ' + ex.load + ' кг' : ''}</span>
       <button class="ic del" data-act="trDelEx" data-idx="${i}" title="Убрать">✕</button>
     </div>`).join('') || '<p class="muted" style="font-size:12px">Упражнений пока нет.</p>';
   if (info) info.textContent = trDraft.length ? trDraft.length + ' упражн. в тренировке' : '';
@@ -2087,9 +2091,10 @@ function renderTrDraft() {
 function trAddEx() {
   const name = $('trExName').value.trim();
   const sets = Math.floor(num($('trExSets').value));
+  const reps = Math.floor(num($('trExReps').value));
   const load = num($('trExLoad').value);
-  trDraft.push({ name: name || ('Упражнение ' + (trDraft.length + 1)), sets: isNaN(sets) ? null : sets, load: isNaN(load) ? null : load });
-  $('trExName').value = ''; $('trExSets').value = ''; $('trExLoad').value = '';
+  trDraft.push({ name: name || ('Упражнение ' + (trDraft.length + 1)), sets: isNaN(sets) ? null : sets, reps: isNaN(reps) ? null : reps, load: isNaN(load) ? null : load });
+  $('trExName').value = ''; $('trExSets').value = ''; $('trExReps').value = ''; $('trExLoad').value = '';
   renderTrDraft(); $('trExName').focus();
 }
 function trDelEx(idx) { trDraft.splice(idx, 1); renderTrDraft(); }
@@ -2223,7 +2228,8 @@ function renderSport() {
     const exs = (w.exercises || []).map((ex, i) => `
       <div class="fin-row ex-row">
         <input class="fin-input fin-comment" type="text" data-field="workout" data-prop="exname" data-id="${w.id}" data-x="${i}" value="${esc(ex.name || '')}" placeholder="Упражнение">
-        <input class="fin-input fin-smal" type="text" data-field="workout" data-prop="sets" data-id="${w.id}" data-x="${i}" value="${ex.sets == null ? '' : ex.sets}" placeholder="Подходы" title="Кол-во подходов">
+        <input class="fin-input fin-sets" type="text" data-field="workout" data-prop="sets" data-id="${w.id}" data-x="${i}" value="${ex.sets == null ? '' : ex.sets}" placeholder="Подходы" title="Кол-во подходов">
+        <input class="fin-input fin-reps" type="text" data-field="workout" data-prop="reps" data-id="${w.id}" data-x="${i}" value="${ex.reps == null ? '' : ex.reps}" placeholder="Повторений" title="Повторений в подходе">
         <input class="fin-input fin-smal" type="text" data-field="workout" data-prop="load" data-id="${w.id}" data-x="${i}" value="${ex.load == null ? '' : ex.load}" placeholder="Вес, кг" title="Рабочий вес, кг">
         <button class="ic del" data-act="sportDelEx" data-id="${w.id}" data-x="${i}" title="Убрать упражнение">✕</button>
       </div>`).join('');
@@ -2497,7 +2503,7 @@ document.addEventListener('click', e => {
     case 'sportDelWorkout': delWorkout(t.dataset.id); break;
     case 'trAddEx': trAddEx(); break;
     case 'trDelEx': trDelEx(Number(t.dataset.idx)); break;
-    case 'sportAddExRow': { const w = state.sport.workouts.find(x => x.id === t.dataset.id); if (w) { w.exercises = w.exercises || []; w.exercises.push({ name: '', sets: null, load: null }); saveState(); renderSport(); } break; }
+    case 'sportAddExRow': { const w = state.sport.workouts.find(x => x.id === t.dataset.id); if (w) { w.exercises = w.exercises || []; w.exercises.push({ name: '', sets: null, reps: null, load: null }); saveState(); renderSport(); } break; }
     case 'sportDelEx': { const w = state.sport.workouts.find(x => x.id === t.dataset.id); if (w && Array.isArray(w.exercises)) { w.exercises.splice(Number(t.dataset.x), 1); saveState(); renderSport(); } break; }
     case 'addListBtn': addList(); break;
     case 'delHabit': state.habits = state.habits.filter(h => h.id !== t.dataset.id); saveState(); renderToday(); renderHabits(); break;
