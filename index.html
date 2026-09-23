@@ -733,6 +733,16 @@ function toggleTaskLock(id) {
   t.locked = !t.locked;
   saveState(); renderToday(); renderTasks();
 }
+function moveTaskToFirst(id) {
+  const lst = listOfTask(id);
+  if (!lst || lst === state.lists[0]) return;
+  const t = lst && lst.tasks.find(x => x.id === id);
+  if (!t) return;
+  lst.tasks = lst.tasks.filter(x => x.id !== id);
+  delete t.backTo; // теперь это «родная» задача первого списка
+  state.lists[0].tasks.push(t);
+  saveState(); renderToday(); renderTasks();
+}
 function editTask(id) { /* не используется — текст редактируется инпутами напрямую */ }
 
 /* выполненные задачи первого списка удаляются в 00:00 */
@@ -1432,6 +1442,7 @@ function renderMiniToday() {
 function taskRowHTML(t, compact) {
   const lst = listOfTask(t.id);
   const bl = taskBlocked(t, lst);
+  const isTop = lst === state.lists[0];
   const lockInd = compact
     ? (t.locked ? `<span class="lock" title="${bl ? 'Залочена: ждёт выполнения остальных задач' : 'Залочена вручную'}">${bl ? '⏳' : '🔒'}</span>` : '')
     : `<button class="ic lock-btn${t.locked ? ' on' : ''}" data-act="lockTask" data-id="${t.id}"
@@ -1441,7 +1452,10 @@ function taskRowHTML(t, compact) {
     <input type="checkbox" data-act="toggleTask" data-id="${t.id}" ${t.done ? 'checked' : ''} ${bl ? 'disabled' : ''}>
     <input class="task-edit-in" type="text" data-field="task" data-id="${t.id}" value="${esc(t.text)}" placeholder="Текст задачи…" ${bl ? 'title="Залочена: выполните остальные задачи в категории"' : ''}>
     ${lockInd}
-    ${compact ? '' : `<span class="ctrl-row"><button class="ic del" data-act="delTask" data-id="${t.id}" title="Удалить">✕</button></span>`}
+    ${compact ? '' : `<span class="ctrl-row">
+      ${isTop ? '' : `<button class="ic" data-act="moveToFirst" data-id="${t.id}" title="Перенести в первый список">⬆</button>`}
+      <button class="ic del" data-act="delTask" data-id="${t.id}" title="Удалить">✕</button>
+    </span>`}
   </li>`;
 }
 function tasksHtml(lst, compact) {
@@ -2200,6 +2214,7 @@ document.addEventListener('click', e => {
     case 'tab': showTab(t.dataset.tab); break;
     case 'delTask': deleteTask(t.dataset.id); break;
     case 'lockTask': toggleTaskLock(t.dataset.id); break;
+    case 'moveToFirst': moveTaskToFirst(t.dataset.id); break;
     case 'delList': deleteList(t.dataset.id); break;
     case 'moveList': moveList(t.dataset.id, Number(t.dataset.dir)); break;
     case 'renameList': renameList(t.dataset.id); break;
