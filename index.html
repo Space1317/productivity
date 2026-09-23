@@ -268,6 +268,7 @@
   .sm-inp{width:100%;padding:8px 10px;font-size:14px;background:var(--bg2);border:1px solid var(--border);border-radius:9px;color:var(--text);font:inherit;outline:none}
   .sm-inp:focus{border-color:var(--accent)}
   .sm-static{padding:8px 10px;font-size:14px;font-weight:700;background:var(--bg);border:1px solid var(--border);border-radius:9px}
+  .sp-target{display:flex;align-items:center;gap:8px;font-size:13px;margin-top:8px;flex-wrap:wrap}
   .st-name{flex:1;min-width:0;font-weight:600;word-break:break-word}
   .st-cur{cursor:pointer;border-bottom:1px dashed var(--muted);padding:0 2px;white-space:nowrap}
   .st-cur:hover{color:var(--accent2)}
@@ -311,6 +312,7 @@
       <button data-act="tab" data-tab="calendar">Календарь</button>
       <button data-act="tab" data-tab="notes">Заметки</button>
       <button data-act="tab" data-tab="finance">Финансы</button>
+      <button data-act="tab" data-tab="sport">Спорт</button>
     </nav>
   </div>
 </header>
@@ -511,6 +513,36 @@
     </div>
   </section>
 
+  <!-- ============ СПОРТ ============ -->
+  <section id="tab-sport" class="tab">
+    <h2 class="page-title">Спорт</h2>
+    <p class="sub">Вес и тренировки.</p>
+
+    <div class="card">
+      <h3>⚖️ Вес <span class="tag" id="sportWeightCount"></span></h3>
+      <div id="sportWeightSummary"></div>
+      <div class="add-row" style="margin-top:8px">
+        <input type="text" id="wtDate" placeholder="ГГГГ-ММ-ДД" autocomplete="off" style="width:120px">
+        <input type="text" id="wtWeight" placeholder="Вес, кг" autocomplete="off" style="width:100px">
+        <button class="btn" data-act="sportAddWeight">Добавить</button>
+      </div>
+      <div class="chart" id="sportWeightChart"></div>
+      <div id="sportWeightList" class="stack"></div>
+    </div>
+
+    <div class="card">
+      <h3>🏋️ Тренировки <span class="tag" id="sportWorkoutCount"></span></h3>
+      <div id="sportWorkoutStats"></div>
+      <div class="add-row">
+        <input type="text" id="trDate" placeholder="ГГГГ-ММ-ДД" autocomplete="off" style="width:120px">
+        <input type="text" id="trType" placeholder="Тип (бег, силовая, йога…)" autocomplete="off" style="flex:1">
+        <input type="text" id="trDur" placeholder="Мин" autocomplete="off" style="width:80px">
+        <button class="btn" data-act="sportAddWorkout">Добавить</button>
+      </div>
+      <div id="sportWorkouts" class="stack"></div>
+    </div>
+  </section>
+
 </main>
 
 <div class="modal-ov" id="evModal" style="display:none">
@@ -584,6 +616,7 @@ function defaults() {
     habitMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
     timer: { label: '', durationMs: 0, endAt: 0 },
     finance: { balanceEntries: [], stocks: [], monthly: [], upcoming: [] },
+    sport: { weightEntries: [], workouts: [], targetWeight: null, weeklyGoal: 3 },
     gcal: { clientId: '', token: null, tokenExpiry: 0, connected: false },
     calMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
     calDay: todayKey()
@@ -652,6 +685,10 @@ if (!Array.isArray(state.finance.balanceEntries)) state.finance.balanceEntries =
 if (!Array.isArray(state.finance.stocks)) state.finance.stocks = [];
 if (!Array.isArray(state.finance.monthly)) state.finance.monthly = [];
 if (!Array.isArray(state.finance.upcoming)) state.finance.upcoming = [];
+if (!state.sport || typeof state.sport !== 'object') state.sport = { weightEntries: [], workouts: [], targetWeight: null, weeklyGoal: 3 };
+if (!Array.isArray(state.sport.weightEntries)) state.sport.weightEntries = [];
+if (!Array.isArray(state.sport.workouts)) state.sport.workouts = [];
+if (typeof state.sport.weeklyGoal !== 'number') state.sport.weeklyGoal = 3;
 if (state.gcal == null) state.gcal = { clientId: '', token: null, tokenExpiry: 0, connected: false };
 if (!state.calMonth) state.calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
 if (!state.calDay) state.calDay = todayKey();
@@ -1242,7 +1279,7 @@ async function refreshAllGcal() {
 
 /* ================= рендеры ================= */
 function renderAll() {
-  renderToday(); renderTasks(); renderHabits(); renderNotes(); renderFinance();
+  renderToday(); renderTasks(); renderHabits(); renderNotes(); renderFinance(); renderSport();
   renderGcalSetup(); renderCalendar();
 }
 
@@ -1941,10 +1978,10 @@ function renderFinance() {
 /* общее сохранение полей финансов (инпуты прямо в записях) */
 function finFieldTarget(el) {
   const cls = el.dataset.field, id = el.dataset.id, prop = el.dataset.prop;
-  const arr = { entry: state.finance.balanceEntries, stock: state.finance.stocks, monthly: state.finance.monthly, upcoming: state.finance.upcoming }[cls];
+  const arr = { entry: state.finance.balanceEntries, stock: state.finance.stocks, monthly: state.finance.monthly, upcoming: state.finance.upcoming, weight: state.sport.weightEntries, workout: state.sport.workouts }[cls];
   const item = arr && arr.find(x => x.id === id);
   if (!item) return null;
-  return { item, prop, raw: el.value, cls, numeric: ['amount', 'count', 'buy', 'cur', 'day'].indexOf(prop) >= 0 };
+  return { item, prop, raw: el.value, cls, numeric: ['amount', 'count', 'buy', 'cur', 'day', 'weight', 'duration'].indexOf(prop) >= 0 };
 }
 function applyFinField(el) {
   const t = finFieldTarget(el);
@@ -1957,7 +1994,7 @@ function applyFinField(el) {
       v = t.prop === 'day' ? Math.floor(num(raw)) : num(raw);
       if (isNaN(v)) return false;
     }
-  } else if (t.cls === 'upcoming' && t.prop === 'date') {
+  } else if (t.prop === 'date') {
     v = parseDateInput(t.raw);
   } else v = t.raw;
   t.item[t.prop] = v;
@@ -1980,6 +2017,124 @@ function taskFieldCommit(el) {
   const v = el.value.trim();
   t.text = v || t.text;
   saveState(); renderToday(); renderTasks();
+}
+
+/* ================= СПОРТ ================= */
+function addWeight() {
+  const d = ($('wtDate').value || '').trim();
+  const date = d ? parseDateInput(d) : todayKey();
+  const w = num($('wtWeight').value);
+  if (isNaN(w) || w <= 0) { $('wtWeight').focus(); return; }
+  state.sport.weightEntries.push({ id: uid(), date, weight: w });
+  $('wtDate').value = ''; $('wtWeight').value = '';
+  saveState(); renderSport();
+}
+function delWeight(id) {
+  state.sport.weightEntries = state.sport.weightEntries.filter(x => x.id !== id);
+  saveState(); renderSport();
+}
+function addWorkout() {
+  const d = ($('trDate').value || '').trim();
+  const date = d ? parseDateInput(d) : todayKey();
+  const type = $('trType').value.trim();
+  if (!type) { $('trType').focus(); return; }
+  const dur = num($('trDur').value);
+  state.sport.workouts.push({ id: uid(), date, type, duration: isNaN(dur) ? null : dur });
+  $('trDate').value = ''; $('trType').value = ''; $('trDur').value = '';
+  saveState(); renderSport();
+}
+function delWorkout(id) {
+  state.sport.workouts = state.sport.workouts.filter(x => x.id !== id);
+  saveState(); renderSport();
+}
+function sportWeightChartHTML(entries) {
+  const pts = entries.slice(-15);
+  if (pts.length < 2) return '<p class="muted" style="font-size:12px;padding:6px 0">Добавьте минимум 2 записи веса — появится график.</p>';
+  const W = 480, H = 140, pad = 24;
+  const ws = pts.map(p => p.weight);
+  const min = Math.min.apply(null, ws), max = Math.max.apply(null, ws);
+  const rng = (max - min) || 1;
+  const x = i => pad + i * (W - 2 * pad) / (pts.length - 1);
+  const y = w => H - pad - (w - min) / rng * (H - 2 * pad);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="График веса">
+    <text x="4" y="${y(max) + 4}" class="chart-day">${max.toFixed(1)}</text>
+    <text x="4" y="${y(min) + 4}" class="chart-day">${min.toFixed(1)}</text>
+    <polyline points="${pts.map((p, i) => x(i) + ',' + y(p.weight)).join(' ')}" fill="none" stroke="#ff7a18" stroke-width="2.5"/>`;
+  pts.forEach((p, i) => {
+    svg += `<circle cx="${x(i)}" cy="${y(p.weight)}" r="3.5" fill="#ff9d3b"><title>${esc(p.date)}: ${p.weight} кг</title></circle>`;
+  });
+  return svg + '</svg>';
+}
+function sportStreakDays() {
+  // недельная серия: сколько подряд последних 7-дневок с тренировками — упрощённо: серия по календарю
+  let streak = 0;
+  const d = new Date();
+  if (!state.sport.workouts.some(w => w.date === fmtDay(d))) d.setDate(d.getDate() - 1);
+  while (state.sport.workouts.some(w => w.date === fmtDay(d))) { streak++; d.setDate(d.getDate() - 1); }
+  return streak;
+}
+function renderSport() {
+  const s = state.sport;
+  const wSorted = s.weightEntries.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const last = wSorted[wSorted.length - 1];
+  const prev = wSorted[wSorted.length - 2];
+  const curW = last ? last.weight : null;
+  $('sportWeightCount').textContent = s.weightEntries.length ? s.weightEntries.length + ' зап.' : '';
+  let sum = curW == null
+    ? '<div class="fin-bal pos">— кг</div><p class="muted" style="font-size:12px">Добавьте первую запись веса.</p>'
+    : `<div class="fin-bal ${prev && curW > prev.weight ? 'neg' : 'pos'}" style="margin:0 0 4px">${curW.toFixed(1)} кг</div>
+       <p class="muted" style="font-size:12px">${prev ? 'Изменение с прошлой записи: <b class="' + (curW > prev.weight ? 'neg' : 'pos') + '">' + (curW > prev.weight ? '+' : '') + (curW - prev.weight).toFixed(1) + ' кг</b>' : 'Первая запись'}</p>`;
+  const targetDiff = curW != null && s.targetWeight != null ? curW - s.targetWeight : null;
+  sum += `<div class="sp-target">
+      <span class="muted">Цель:</span>
+      <input class="fin-input fin-smal" id="sportTargetInput" data-act="sportTarget" value="${s.targetWeight == null ? '' : s.targetWeight}" style="width:70px">
+      <span class="muted">кг</span>
+      ${targetDiff != null ? `<span class="${targetDiff > 0.05 ? 'neg' : (targetDiff < -0.05 ? 'pos' : '')}">${targetDiff > 0.05 ? 'осталось сбросить ' + targetDiff.toFixed(1) + ' кг' : (targetDiff < -0.05 ? 'до цели −' + Math.abs(targetDiff).toFixed(1) + ' кг ниже' : 'цель достигнута ✓')}</span>` : ''}
+    </div>`;
+  $('sportWeightSummary').innerHTML = sum;
+  $('sportWeightChart').innerHTML = sportWeightChartHTML(wSorted);
+  $('sportWeightList').innerHTML = wSorted.slice().reverse().map(e => `
+    <div class="fin-row">
+      <input class="fin-input fin-date" type="text" data-field="weight" data-prop="date" data-id="${e.id}" value="${esc(e.date)}" placeholder="Дата">
+      <input class="fin-input fin-comment" style="text-align:right" type="text" data-field="weight" data-prop="weight" data-id="${e.id}" value="${e.weight}" title="Вес, кг">
+      <span class="fin-amt" style="min-width:70px;text-align:right">кг</span>
+      <button class="ic del" data-act="sportDelWeight" data-id="${e.id}" title="Удалить">✕</button>
+    </div>`).join('') || '<p class="muted" style="font-size:13px">Записей веса пока нет.</p>';
+
+  // тренировки
+  const tKey = todayKey();
+  const now = new Date();
+  const dates = s.workouts.map(w => w.date);
+  const total = s.workouts.length;
+  const last7 = dates.filter(d => d >= fmtDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6))).length;
+  const last30 = dates.filter(d => d >= fmtDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29))).length;
+  const dow = (now.getDay() + 6) % 7; // кол-во дней от понедельника
+  const weekStart = fmtDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow));
+  const thisWeek = dates.filter(d => d >= weekStart).length;
+  const goal = s.weeklyGoal || 1;
+  const gPct = Math.min(100, Math.round(thisWeek / goal * 100));
+  $('sportWorkoutCount').textContent = total ? total + ' трен.' : '';
+  $('sportWorkoutStats').innerHTML = `
+    <div class="st-summary">
+      <span>Всего: <b>${total}</b></span>
+      <span>за 7 дней: <b>${last7}</b></span>
+      <span>за 30 дней: <b>${last30}</b></span>
+      <span title="Текущая серия дней подряд">🔥 серия: <b>${sportStreakDays()}</b></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:8px">
+      <span class="muted">Цель за неделю:</span>
+      <input class="fin-input fin-count" data-act="sportGoal" value="${goal}" style="width:60px">
+      <span class="muted">трен.</span>
+      <div class="ms-bar" style="flex:1"><div class="ms-fill" style="width:${gPct}%"></div></div>
+      <b class="muted">${thisWeek}/${goal}</b>
+    </div>`;
+  $('sportWorkouts').innerHTML = s.workouts.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).map(w => `
+    <div class="fin-row">
+      <input class="fin-input fin-date" type="text" data-field="workout" data-prop="date" data-id="${w.id}" value="${esc(w.date)}" placeholder="Дата">
+      <input class="fin-input fin-comment" type="text" data-field="workout" data-prop="type" data-id="${w.id}" value="${esc(w.type)}" title="Тип тренировки">
+      <input class="fin-input fin-smal" type="text" data-field="workout" data-prop="duration" data-id="${w.id}" value="${w.duration == null ? '' : w.duration}" placeholder="Мин" title="Длительность, мин">
+      <button class="ic del" data-act="sportDelWorkout" data-id="${w.id}" title="Удалить">✕</button>
+    </div>`).join('') || '<p class="muted" style="font-size:13px">Тренировок пока нет.</p>';
 }
 
 /* -------- календарь: рендер -------- */
@@ -2239,6 +2394,10 @@ document.addEventListener('click', e => {
     case 'finAddUpcoming': addFinUpcoming(); break;
     case 'finDelUpcoming': delFinUpcoming(t.dataset.id); break;
     case 'toggleFinPaid': toggleFinPaid(t.dataset.id); break;
+    case 'sportAddWeight': addWeight(); break;
+    case 'sportDelWeight': delWeight(t.dataset.id); break;
+    case 'sportAddWorkout': addWorkout(); break;
+    case 'sportDelWorkout': delWorkout(t.dataset.id); break;
     case 'addListBtn': addList(); break;
     case 'delHabit': state.habits = state.habits.filter(h => h.id !== t.dataset.id); saveState(); renderToday(); renderHabits(); break;
     case 'toggleHabit': toggleHabit(t.dataset.id, t.dataset.day); break;
@@ -2293,6 +2452,8 @@ document.addEventListener('change', e => {
     updateEvDurPreview();
   }
   else if (act === 'evWhen') { updateEvDurPreview(); }
+  else if (act === 'sportTarget') { const v = num(t.value); state.sport.targetWeight = (v && !isNaN(v) && v > 0) ? v : null; saveState(); renderSport(); }
+  else if (act === 'sportGoal') { const v = Math.floor(num(t.value)); if (!isNaN(v) && v > 0) { state.sport.weeklyGoal = v; saveState(); renderSport(); } }
 });
 
 document.addEventListener('keydown', e => {
