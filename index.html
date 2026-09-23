@@ -495,6 +495,17 @@
     </div>
 
     <div class="card">
+      <h3>💵 Доллары <span class="tag" id="usdCount"></span></h3>
+      <div id="usdSummary"></div>
+      <div class="add-row" style="margin-top:8px">
+        <input type="text" id="usdDate" placeholder="ГГГГ-ММ-ДД" autocomplete="off" style="width:120px">
+        <input type="text" id="usdAmount" placeholder="Сколько $ (+/−)" autocomplete="off" style="width:130px">
+        <button class="btn" data-act="finAddUsd">Добавить</button>
+      </div>
+      <div id="usdList" class="stack"></div>
+    </div>
+
+    <div class="card">
       <h3>📈 Акции</h3>
       <div id="finStocksHead"></div>
       <div class="add-row">
@@ -655,7 +666,7 @@ function defaults() {
     ],
     habitMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
     timer: { label: '', durationMs: 0, endAt: 0 },
-    finance: { balanceEntries: [], stocks: [], monthly: [], upcoming: [] },
+    finance: { balanceEntries: [], stocks: [], monthly: [], upcoming: [], usdEntries: [], usdRate: null, usdRateUpd: '' },
     sport: { weightEntries: [], workouts: [], targetWeight: null, weeklyGoal: 3 },
     gcal: { clientId: '', token: null, tokenExpiry: 0, connected: false },
     calMonth: { y: new Date().getFullYear(), m: new Date().getMonth() },
@@ -725,6 +736,9 @@ if (!Array.isArray(state.finance.balanceEntries)) state.finance.balanceEntries =
 if (!Array.isArray(state.finance.stocks)) state.finance.stocks = [];
 if (!Array.isArray(state.finance.monthly)) state.finance.monthly = [];
 if (!Array.isArray(state.finance.upcoming)) state.finance.upcoming = [];
+if (!Array.isArray(state.finance.usdEntries)) state.finance.usdEntries = [];
+if (!state.finance.usdRate) state.finance.usdRate = null;
+if (!state.finance.usdRateUpd) state.finance.usdRateUpd = '';
 if (!state.sport || typeof state.sport !== 'object') state.sport = { weightEntries: [], workouts: [], targetWeight: null, weeklyGoal: 3 };
 if (!Array.isArray(state.sport.weightEntries)) state.sport.weightEntries = [];
 if (!Array.isArray(state.sport.workouts)) state.sport.workouts = [];
@@ -2017,6 +2031,29 @@ function toggleFinPaid(id) {
   x.paid = !x.paid;
   saveState(); renderFinance();
 }
+function fmtUsd(n) {
+  return (Math.round(n * 100) / 100).toLocaleString('ru-RU') + ' $';
+}
+function addFinUsd() {
+  const d = ($('usdDate').value || '').trim();
+  const date = d ? parseDateInput(d) : todayKey();
+  const a = num($('usdAmount').value);
+  if (isNaN(a)) { $('usdAmount').focus(); return; }
+  state.finance.usdEntries.push({ id: uid(), date, amount: a });
+  $('usdDate').value = ''; $('usdAmount').value = '';
+  saveState(); renderFinance();
+}
+function delFinUsd(id) {
+  state.finance.usdEntries = state.finance.usdEntries.filter(e => e.id !== id);
+  saveState(); renderFinance();
+}
+async function refreshUsdRate() {
+  try {
+    const r = await fetchUsdRub();
+    if (r && r > 0) { state.finance.usdRate = r; state.finance.usdRateUpd = todayKey(); saveState(); renderFinance(); return true; }
+    return false;
+  } catch (e) { return false; }
+}
 
 function renderFinance() {
   const f = state.finance;
@@ -2033,6 +2070,24 @@ function renderFinance() {
       <input class="fin-input fin-amount ${e.amount >= 0 ? 'pos' : 'neg'}" type="text" data-field="entry" data-prop="amount" data-id="${e.id}" value="${e.amount}" title="Сумма (+ доход / − расход)">
       <button class="ic del" data-act="finDelEntry" data-id="${e.id}" title="Удалить">✕</button>
     </div>`).join('') || '<p class="muted" style="font-size:13px">Записей пока нет.</p>';
+
+  // доллары
+  const usdTotal = f.usdEntries.reduce((s, e) => s + e.amount, 0);
+  const rate = f.usdRate;
+  $('usdCount').textContent = f.usdEntries.length ? f.usdEntries.length + ' зап.' : '';
+  $('usdSummary').innerHTML = `
+    <div class="fin-bal ${usdTotal >= 0 ? 'pos' : 'neg'}" style="margin:0 0 4px">${fmtUsd(usdTotal)}</div>
+    <p class="muted" style="font-size:12px;margin-top:2px">${rate
+      ? '≈ ' + fmtMoney(usdTotal * rate) + ' ₽ &nbsp;·&nbsp; курс: 1 $ = ' + rate.toFixed(2) + ' ₽' + (f.usdRateUpd ? ' (' + f.usdRateUpd + ')' : '')
+      : 'Курс не загружен — нажмите «Обновить курс», чтобы увидеть рубли.'}</p>
+    <div style="margin-top:6px"><button class="btn btn-ghost" data-act="refreshUsd" style="font-size:12px;padding:5px 12px">⟳ Обновить курс</button></div>`;
+  $('usdList').innerHTML = f.usdEntries.slice().reverse().map(e => `
+    <div class="fin-row">
+      <input class="fin-input fin-date" type="text" data-field="usd" data-prop="date" data-id="${e.id}" value="${esc(e.date)}" placeholder="Дата">
+      <input class="fin-input fin-amount ${e.amount >= 0 ? 'pos' : 'neg'}" type="text" data-field="usd" data-prop="amount" data-id="${e.id}" value="${e.amount}" placeholder="Сумма, $">
+      <span class="fin-amt">$</span>
+      <button class="ic del" data-act="finDelUsd" data-id="${e.id}" title="Удалить">✕</button>
+    </div>`).join('') || '<p class="muted" style="font-size:13px">Записей в долларах пока нет.</p>';
 
   // акции
   const invest = f.stocks.reduce((s, x) => s + x.buy * x.count, 0);
@@ -2079,7 +2134,7 @@ function renderFinance() {
 /* общее сохранение полей финансов (инпуты прямо в записях) */
 function finFieldTarget(el) {
   const cls = el.dataset.field, id = el.dataset.id, prop = el.dataset.prop;
-  const arr = { entry: state.finance.balanceEntries, stock: state.finance.stocks, monthly: state.finance.monthly, upcoming: state.finance.upcoming, weight: state.sport.weightEntries, workout: state.sport.workouts }[cls];
+  const arr = { entry: state.finance.balanceEntries, stock: state.finance.stocks, monthly: state.finance.monthly, upcoming: state.finance.upcoming, usd: state.finance.usdEntries, weight: state.sport.weightEntries, workout: state.sport.workouts }[cls];
   let item = arr && arr.find(x => x.id === id);
   if (!item) return null;
   if (cls === 'workout' && el.dataset.x != null && Array.isArray(item.exercises)) {
@@ -2594,6 +2649,9 @@ document.addEventListener('click', e => {
     case 'sportAddWeight': addWeight(); break;
     case 'sportDelWeight': delWeight(t.dataset.id); break;
     case 'sportAddWorkout': addWorkout(); break;
+    case 'finAddUsd': addFinUsd(); break;
+    case 'finDelUsd': delFinUsd(t.dataset.id); break;
+    case 'refreshUsd': refreshUsdRate(); break;
     case 'sportDelWorkout': delWorkout(t.dataset.id); break;
     case 'trAddEx': trAddEx(); break;
     case 'trDelEx': trDelEx(Number(t.dataset.idx)); break;
@@ -2822,6 +2880,7 @@ function scheduleDailyPrices() {
   if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
   setTimeout(() => {
     if (state.finance && state.finance.stocks.length) refreshStockPrices();
+    if (state.finance && state.finance.usdEntries.length) refreshUsdRate();
     scheduleDailyPrices();
   }, next.getTime() - now.getTime());
 }
