@@ -535,8 +535,14 @@
       <div id="sportWorkoutStats"></div>
       <div class="add-row">
         <input type="text" id="trDate" placeholder="ГГГГ-ММ-ДД" autocomplete="off" style="width:120px">
-        <input type="text" id="trType" placeholder="Тип (бег, силовая, йога…)" autocomplete="off" style="flex:1">
-        <input type="text" id="trDur" placeholder="Мин" autocomplete="off" style="width:80px">
+        <select id="trType" data-act="trType" style="width:130px">
+          <option value="Футбол">⚽ Футбол</option>
+          <option value="Теннис">🎾 Теннис</option>
+          <option value="Силовая">🏋️ Силовая</option>
+          <option value="Прогулка">🚶 Прогулка</option>
+        </select>
+        <input type="text" id="trSpec1" placeholder="Минут" autocomplete="off" style="width:110px">
+        <input type="text" id="trSpec2" placeholder="Вес, кг" autocomplete="off" style="width:100px;display:none">
         <button class="btn" data-act="sportAddWorkout">Добавить</button>
       </div>
       <div id="sportWorkouts" class="stack"></div>
@@ -688,6 +694,7 @@ if (!Array.isArray(state.finance.upcoming)) state.finance.upcoming = [];
 if (!state.sport || typeof state.sport !== 'object') state.sport = { weightEntries: [], workouts: [], targetWeight: null, weeklyGoal: 3 };
 if (!Array.isArray(state.sport.weightEntries)) state.sport.weightEntries = [];
 if (!Array.isArray(state.sport.workouts)) state.sport.workouts = [];
+state.sport.workouts.forEach(w => { if (typeof w.dur === 'undefined' && typeof w.duration !== 'undefined') { w.dur = w.duration; delete w.duration; } });
 if (typeof state.sport.weeklyGoal !== 'number') state.sport.weeklyGoal = 3;
 if (state.gcal == null) state.gcal = { clientId: '', token: null, tokenExpiry: 0, connected: false };
 if (!state.calMonth) state.calMonth = { y: new Date().getFullYear(), m: new Date().getMonth() };
@@ -1981,7 +1988,7 @@ function finFieldTarget(el) {
   const arr = { entry: state.finance.balanceEntries, stock: state.finance.stocks, monthly: state.finance.monthly, upcoming: state.finance.upcoming, weight: state.sport.weightEntries, workout: state.sport.workouts }[cls];
   const item = arr && arr.find(x => x.id === id);
   if (!item) return null;
-  return { item, prop, raw: el.value, cls, numeric: ['amount', 'count', 'buy', 'cur', 'day', 'weight', 'duration'].indexOf(prop) >= 0 };
+  return { item, prop, raw: el.value, cls, numeric: ['amount', 'count', 'buy', 'cur', 'day', 'weight', 'duration', 'sets', 'load', 'dur'].indexOf(prop) >= 0 };
 }
 function applyFinField(el) {
   const t = finFieldTarget(el);
@@ -2033,14 +2040,33 @@ function delWeight(id) {
   state.sport.weightEntries = state.sport.weightEntries.filter(x => x.id !== id);
   saveState(); renderSport();
 }
+function sportWorkoutTypes() { return ['Футбол', 'Теннис', 'Силовая', 'Прогулка']; }
+function updateTrForm() {
+  const sel = $('trType'), s1 = $('trSpec1'), s2 = $('trSpec2');
+  if (!sel || !s1 || !s2) return;
+  if (sel.value === 'Силовая') {
+    s1.placeholder = 'Подходы'; s1.title = 'Количество подходов';
+    s2.style.display = ''; s2.placeholder = 'Вес, кг'; s2.title = 'Рабочий вес, кг';
+  } else {
+    s1.placeholder = 'Минут'; s1.title = 'Длительность, мин';
+    s2.style.display = 'none';
+  }
+}
 function addWorkout() {
   const d = ($('trDate').value || '').trim();
   const date = d ? parseDateInput(d) : todayKey();
-  const type = $('trType').value.trim();
-  if (!type) { $('trType').focus(); return; }
-  const dur = num($('trDur').value);
-  state.sport.workouts.push({ id: uid(), date, type, duration: isNaN(dur) ? null : dur });
-  $('trDate').value = ''; $('trType').value = ''; $('trDur').value = '';
+  const type = $('trType').value;
+  const w = { id: uid(), date, type, dur: null, sets: null, load: null };
+  const v1 = num($('trSpec1').value);
+  if (type === 'Силовая') {
+    w.sets = isNaN(v1) ? null : v1;
+    const v2 = num($('trSpec2').value);
+    w.load = isNaN(v2) ? null : v2;
+  } else {
+    w.dur = isNaN(v1) ? null : v1;
+  }
+  state.sport.workouts.push(w);
+  $('trDate').value = ''; $('trSpec1').value = ''; $('trSpec2').value = '';
   saveState(); renderSport();
 }
 function delWorkout(id) {
@@ -2114,6 +2140,11 @@ function renderSport() {
   const goal = s.weeklyGoal || 1;
   const gPct = Math.min(100, Math.round(thisWeek / goal * 100));
   $('sportWorkoutCount').textContent = total ? total + ' трен.' : '';
+  const tIcons = { 'Футбол': '⚽', 'Теннис': '🎾', 'Силовая': '🏋️', 'Прогулка': '🚶' };
+  const typeCounts = sportWorkoutTypes().map(t => {
+    const n = s.workouts.filter(w => w.type === t).length;
+    return n ? `${tIcons[t] || ''} ${t}: ${n}` : null;
+  }).filter(Boolean).join(' &nbsp;•&nbsp; ') || 'пока нет';
   $('sportWorkoutStats').innerHTML = `
     <div class="st-summary">
       <span>Всего: <b>${total}</b></span>
@@ -2121,6 +2152,7 @@ function renderSport() {
       <span>за 30 дней: <b>${last30}</b></span>
       <span title="Текущая серия дней подряд">🔥 серия: <b>${sportStreakDays()}</b></span>
     </div>
+    <p class="muted" style="font-size:12px;margin:0 0 8px">${typeCounts}</p>
     <div style="display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:8px">
       <span class="muted">Цель за неделю:</span>
       <input class="fin-input fin-count" data-act="sportGoal" value="${goal}" style="width:60px">
@@ -2131,10 +2163,16 @@ function renderSport() {
   $('sportWorkouts').innerHTML = s.workouts.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).map(w => `
     <div class="fin-row">
       <input class="fin-input fin-date" type="text" data-field="workout" data-prop="date" data-id="${w.id}" value="${esc(w.date)}" placeholder="Дата">
-      <input class="fin-input fin-comment" type="text" data-field="workout" data-prop="type" data-id="${w.id}" value="${esc(w.type)}" title="Тип тренировки">
-      <input class="fin-input fin-smal" type="text" data-field="workout" data-prop="duration" data-id="${w.id}" value="${w.duration == null ? '' : w.duration}" placeholder="Мин" title="Длительность, мин">
+      <select class="fin-input wt-type" data-act="workoutType" data-id="${w.id}" style="width:120px">
+        ${sportWorkoutTypes().map(t => `<option value="${t}" ${w.type === t ? 'selected' : ''}>${tIcons[t] || ''} ${t}</option>`).join('')}
+      </select>
+      ${w.type === 'Силовая'
+        ? `<input class="fin-input fin-smal" type="text" data-field="workout" data-prop="sets" data-id="${w.id}" value="${w.sets == null ? '' : w.sets}" placeholder="Подходы" title="Кол-во подходов">
+           <input class="fin-input fin-smal" type="text" data-field="workout" data-prop="load" data-id="${w.id}" value="${w.load == null ? '' : w.load}" placeholder="Вес, кг" title="Рабочий вес, кг">`
+        : `<input class="fin-input fin-smal" type="text" data-field="workout" data-prop="dur" data-id="${w.id}" value="${w.dur == null ? '' : w.dur}" placeholder="Минут" title="Длительность, мин">`}
       <button class="ic del" data-act="sportDelWorkout" data-id="${w.id}" title="Удалить">✕</button>
     </div>`).join('') || '<p class="muted" style="font-size:13px">Тренировок пока нет.</p>';
+  updateTrForm();
 }
 
 /* -------- календарь: рендер -------- */
@@ -2454,6 +2492,8 @@ document.addEventListener('change', e => {
   else if (act === 'evWhen') { updateEvDurPreview(); }
   else if (act === 'sportTarget') { const v = num(t.value); state.sport.targetWeight = (v && !isNaN(v) && v > 0) ? v : null; saveState(); renderSport(); }
   else if (act === 'sportGoal') { const v = Math.floor(num(t.value)); if (!isNaN(v) && v > 0) { state.sport.weeklyGoal = v; saveState(); renderSport(); } }
+  else if (act === 'trType') { updateTrForm(); }
+  else if (act === 'workoutType') { const w = state.sport.workouts.find(x => x.id === t.dataset.id); if (w) { w.type = t.value; saveState(); renderSport(); } }
 });
 
 document.addEventListener('keydown', e => {
